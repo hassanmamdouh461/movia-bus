@@ -6,7 +6,7 @@
    those anonymous pins live as mandatory stops (status 'accepted' from the start). The driver can't skip: the bus
    always pauses at each pickup for a few seconds (boarding) and then continues. */
 (function () {
-  const KEY = 'lotus_state_v1';
+  const KEY = 'lotus_state_v3';
   const TRIP_MS = 8 * 60 * 1000;   // a full trip takes 8 real minutes in the demo
   const BOARD_MS = 8 * 1000;       // how long the bus waits at an accepted pickup
 
@@ -120,7 +120,7 @@
   function seed() {
     const trips = seedTrips();
     return {
-      v: 1,
+      v: 3,
       trips,
       pickups: seedPickups(trips),
       me: { name: 'أحمد محمد', studentId: '20231547' },
@@ -153,7 +153,13 @@
   let state = null;
   const subs = new Set();
   function load() {
-    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 1) return s; } catch (e) {}
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (s && s.v === 3 && Array.isArray(s.trips)) {
+        const hasOpenGo = s.trips.some((t) => t.direction === 'go' && (t.status === 'scheduled' || t.status === 'at_start'));
+        if (hasOpenGo) return s;
+      }
+    } catch (e) {}
     return null;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
@@ -245,7 +251,7 @@
         // the driver must stop for every request: acknowledged ("accepted") or not, the bus boards the student
         if (k.status === 'accepted' || k.status === 'waiting') { k.status = 'boarding'; k.boardingUntil = now + BOARD_MS; t.pauseStart = now; changed = true; }
       });
-      if (p >= 1) { t.status = 'arrived'; t.pauseStart = null; changed = true; }
+      if (p >= 1) { t.startedAt = now; t.pausedTotal = 0; t.pauseStart = null; changed = true; }
     });
     if (changed) { save(); emit(); }
   }, 1000);

@@ -52,7 +52,7 @@
     return '<span class="badge ' + cls + '">' + esc(MB.statusLabel[t.status] || t.status) + '</span>';
   }
   function seatPill(t) {
-    if (t.status !== 'scheduled' && t.status !== 'at_start') return '<span class="pill">' + esc(MB.statusLabel[t.status] || '') + '</span>';
+    if (t.status !== 'scheduled' && t.status !== 'at_start' && t.status !== 'en_route') return '';
     const left = seatsLeft(t);
     if (left <= 0) return '<span class="pill bad">مكتملة' + (t.waitlist ? ' · انتظار ' + t.waitlist : '') + '</span>';
     if (left <= 5) return '<span class="pill warn">متبقي ' + left + ' مقعد</span>';
@@ -338,7 +338,20 @@
       if (tt) freeSeat(st, tt);
       if (tt) st.notifications.unshift(note('تم إلغاء تسجيلك في ' + label(tt), 'booking', tt.id));
     });
-    toast('تم إلغاء التسجيل — يمكنك الآن اختيار رحلة ذهاب أخرى');
+    toast('تم إلغاء تسجيلك الأول — يمكنك الآن التسجيل في أي رحلة ذهاب أخرى');
+  }
+
+  function markMissed(id) {
+    MB.update((st) => {
+      const bb = st.myBookings.find((x) => x.id === id);
+      if (!bb) return;
+      const tt = st.trips.find((x) => x.id === bb.tripId);
+      bb.status = 'missed';
+      st.pickups = (st.pickups || []).filter((k) => !(k.tripId === bb.tripId && k.mine));
+      if (tt) freeSeat(st, tt);
+      if (tt) st.notifications.unshift(note('فاتك موعد ' + label(tt) + ' — يمكنك التسجيل في رحلة ذهاب أخرى الآن', 'cancel', tt.id));
+    });
+    toast('تم تسجيل أن الميعاد فاتك — يمكنك الآن التسجيل في أي رحلة ذهاب أخرى');
   }
 
   // Ready: send my pickup point (snapped onto the path by MB.requestPickup). Returns false if the bus already passed it.
@@ -485,72 +498,91 @@
   function dirTripsBoxHtml(s, activeTrip) {
     const dir = draft.dir || 'go';
     const actGo = activeGoBooking(s);
-    const hasMissedGo = !actGo && s.myBookings.some((b) => {
+    const missedEntry = !actGo && s.myBookings.slice().reverse().find((b) => {
       const bt = trip(b.tripId);
       return (!bt || bt.direction === 'go') && (b.status === 'missed' || (b.status === 'confirmed' && isBookingMissed(s, b)));
     });
-    const list = s.trips
-      .filter((x) => x.direction === dir && x.status !== 'cancelled')
-      .sort((a, b) => a.scheduledAt - b.scheduledAt);
 
     if (dir === 'back') {
+      const list = s.trips
+        .filter((x) => x.direction === 'back' && x.status !== 'cancelled' && x.status !== 'arrived')
+        .sort((a, b) => a.scheduledAt - b.scheduledAt);
       const rows = list.map((x) => {
         const isCur = activeTrip && activeTrip.id === x.id;
         return '<div class="dir-row' + (isCur ? ' on' : '') + '">' +
           '<div class="dir-row-info" data-act="view-trip" data-trip="' + x.id + '">' +
-            '<b>' + esc(MB.R[x.routeId].name) + ' · ' + esc(x.time) + '</b>' +
-            '<div class="meta">' + statusBadge(x) + ' <span>حافلة ' + esc(MB.bus[x.busId].plate) + '</span></div>' +
+            '<b>' + esc(MB.R[x.routeId].name) + ' — التحرك الساعة ' + esc(x.time) + '</b>' +
+            '<div class="meta">' + statusBadge(x) + ' <span>من الجامعة إلى ' + esc(MB.R[x.routeId].fromName) + ' · حافلة ' + esc(MB.bus[x.busId].plate) + '</span></div>' +
           '</div>' +
           '<button class="btn ' + (isCur ? 'sm' : 'sec sm') + '" type="button" data-act="view-trip" data-trip="' + x.id + '">' +
-            (isCur ? 'معروضة' : 'عرض المسار') +
+            (isCur ? 'معروضة على الخريطة' : 'عرض على الخريطة') +
           '</button>' +
         '</div>';
       }).join('');
       return '<div class="dir-box">' +
-        '<div class="dir-note">رحلات العودة من الجامعة بدون تسجيل مسبق — تتحرك الحافلات في مواعيدها المحددة.</div>' +
+        '<div class="dir-note">' +
+          '<b>رحلات العودة من الجامعة (بدون حجز مسبق):</b> الحافلات تتحرك تلقائياً في المواعيد المحددة بالأسفل. اضغط على أي رحلة لمتابعتها على الخريطة.' +
+        '</div>' +
         '<div class="dir-list">' + (rows || '<p class="mute" style="margin:0">لا توجد رحلات عودة حالياً</p>') + '</div>' +
       '</div>';
     }
 
     // dir === 'go' (ذهاب)
+    const list = s.trips
+      .filter((x) => x.direction === 'go' && x.status !== 'cancelled' && (x.status !== 'arrived' || bookingFor(s, x.id)))
+      .sort((a, b) => a.scheduledAt - b.scheduledAt);
+
     let noteHtml;
     if (actGo && trip(actGo.tripId)) {
-      noteHtml = '<div class="dir-note ok">مسجل حالياً في: <b>' + esc(label(trip(actGo.tripId))) + '</b> (مقعد ' + actGo.seat + ') — الحد الأقصى رحلة ذهاب واحدة. يمكنك إلغاء تسجيلك لاختيار موعد آخر.</div>';
-    } else if (hasMissedGo) {
-      noteHtml = '<div class="dir-note warn">فاتك موعد رحلتك السابقة — يمكنك التسجيل الآن في أي رحلة ذهاب متاحة بالأسفل.</div>';
+      const curT = trip(actGo.tripId);
+      noteHtml = '<div class="dir-note ok">' +
+        '<div><b>✓ أنت مسجل حالياً في رحلة ذهاب:</b> ' + esc(MB.R[curT.routeId].name) + ' — الساعة ' + esc(curT.time) + ' (مقعد رقم ' + actGo.seat + ')</div>' +
+        '<div style="margin-top:4px;font-size:12px;opacity:0.9">• أقصى حد لتسجيل رحلات الذهاب هو <b>رحلة واحدة فقط</b>.<br>• لو حابب تغير ميعادك اضغط <b>«إلغاء التسجيل»</b> أو لو الباص فاتك اضغط <b>«فاتني الميعاد»</b> وبعدها سجل في أي رحلة تانية براحتك.</div>' +
+      '</div>';
+    } else if (missedEntry) {
+      const mt = trip(missedEntry.tripId);
+      noteHtml = '<div class="dir-note warn">' +
+        '<div><b>فاتك ميعاد رحلتك السابقة' + (mt ? ' (' + esc(MB.R[mt.routeId].name + ' · ' + mt.time) + ')' : '') + ':</b></div>' +
+        '<div style="margin-top:3px">يمكنك الآن التسجيل مباشرة في أي رحلة ذهاب متاحة بالأسفل (بحد أقصى رحلة واحدة).</div>' +
+      '</div>';
     } else {
-      noteHtml = '<div class="dir-note">اختر رحلة ذهاب للتسجيل فيها (الحد الأقصى للتسجيل: رحلة واحدة).</div>';
+      noteHtml = '<div class="dir-note">' +
+        '<div><b>أنت غير مسجل حالياً في أي رحلة ذهاب:</b></div>' +
+        '<div style="margin-top:3px">اختر رحلة ذهاب واحدة من القائمة بالأسفل واضغط <b>«سجّل في هذه الرحلة»</b>.</div>' +
+      '</div>';
     }
 
     const rows = list.map((x) => {
       const isCur = activeTrip && activeTrip.id === x.id;
-      const myB = bookingFor(s, x.id);
-      const missedHere = myB && isBookingMissed(s, myB);
-      const activeHere = myB && !missedHere;
+      const myB = s.myBookings.slice().reverse().find((b) => b.tripId === x.id && (b.status === 'confirmed' || b.status === 'missed'));
+      const activeHere = myB && myB.status === 'confirmed' && !isBookingMissed(s, myB);
+      const missedHere = myB && (myB.status === 'missed' || (myB.status === 'confirmed' && isBookingMissed(s, myB)));
       const waitingHere = s.waitlistMine.some((w) => w.tripId === x.id && w.status === 'waiting');
       const canBook = (x.status === 'scheduled' || x.status === 'at_start') && seatsLeft(x) > 0;
 
       let actHtml = '';
       if (activeHere) {
-        actHtml = '<span class="badge ok">مسجل · مقعد ' + myB.seat + '</span>' +
-          '<button class="btn sec sm" type="button" data-act="cancel-booking" data-id="' + myB.id + '">إلغاء التسجيل</button>';
-      } else if (missedHere) {
-        actHtml = '<span class="badge bad">فاتك الموعد</span>';
+        actHtml = '<span class="badge ok">✓ رحلتك المسجلة · مقعد ' + myB.seat + '</span>' +
+          '<button class="btn sec sm" type="button" data-act="cancel-booking" data-id="' + myB.id + '">إلغاء التسجيل</button>' +
+          '<button class="btn warn sm" type="button" data-act="mark-missed" data-id="' + myB.id + '">فاتني الميعاد</button>';
       } else if (canBook) {
-        actHtml = '<button class="btn ' + (actGo ? 'sec sm' : 'sm') + '" type="button" data-act="book" data-trip="' + x.id + '">تسجيل</button>';
+        actHtml = (missedHere ? '<span class="badge bad">فاتك الميعاد</span>' : '') +
+          '<button class="btn ' + (actGo ? 'sec sm' : 'sm') + '" type="button" data-act="book" data-trip="' + x.id + '">' +
+            (actGo ? 'سجّل هنا (ألغِ الأولى أولاً)' : 'سجّل في هذه الرحلة') +
+          '</button>';
       } else if ((x.status === 'scheduled' || x.status === 'at_start') && seatsLeft(x) <= 0) {
         actHtml = waitingHere
-          ? '<span class="badge warn">في الانتظار</span>'
-          : '<button class="btn sec sm" type="button" data-act="waitlist" data-trip="' + x.id + '">انتظار</button>';
+          ? '<span class="badge warn">في قائمة الانتظار</span>'
+          : '<button class="btn sec sm" type="button" data-act="waitlist" data-trip="' + x.id + '">انضم للانتظار</button>';
+      } else if (missedHere) {
+        actHtml = '<span class="badge bad">فاتك الميعاد</span>';
       } else {
-        actHtml = '<button class="btn ' + (isCur ? 'sm' : 'sec sm') + '" type="button" data-act="view-trip" data-trip="' + x.id + '">' +
-          (isCur ? 'معروضة' : 'عرض المسار') +
-        '</button>';
+        actHtml = '<span class="badge info">انطلقت الحافلة</span>';
       }
 
       return '<div class="dir-row' + (isCur ? ' on' : '') + '">' +
         '<div class="dir-row-info" data-act="view-trip" data-trip="' + x.id + '">' +
-          '<b>' + esc(MB.R[x.routeId].name) + ' · ' + esc(x.time) + '</b>' +
+          '<b>' + esc(MB.R[x.routeId].name) + ' — الساعة ' + esc(x.time) + '</b>' +
           '<div class="meta">' + statusBadge(x) + ' ' + seatPill(x) + '</div>' +
         '</div>' +
         '<div class="dir-row-acts">' + actHtml + '</div>' +
@@ -992,6 +1024,7 @@
       case 'leave-wait': leaveWaitlist(d.id); break;
       case 'sim-free': simulateFreedSeat(d.trip); break;
       case 'cancel-booking': cancelBooking(d.id); break;
+      case 'mark-missed': markMissed(d.id); break;
       case 'report-send': sendReport(); break;
       case 'notif-read': MB.update((st) => st.notifications.forEach((n) => { n.read = true; })); break;
       default: break;
