@@ -374,7 +374,7 @@
       L.circleMarker(a, { radius: 6, color: r.color, weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('بداية: ' + esc(r.fromName || '')).addTo(map);
       L.circleMarker(b, { radius: 6, color: r.color, weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('نهاية: ' + esc(r.toName || '')).addTo(map);
     });
-    if (pts.length) map.fitBounds(pts, { padding: [24, 24] });
+    if (pts.length) map.fitBounds(pts, { padding: [24, 24] }); setTimeout(() => map && map.invalidateSize(), 60);
   }
 
   function updateMonitor() {

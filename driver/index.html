@@ -20,8 +20,8 @@
       <span id="statusText">متصل</span>
     </span>
   </div>
-  <div class="row">
-    <select id="driverSel" aria-label="اختيار السائق" style="width:auto;min-width:170px;padding:5px 10px;font-weight:700"></select>
+  <div class="row topbar-actions">
+    <select id="driverSel" class="drv-sel" aria-label="اختيار السائق"></select>
     <nav class="role-nav" aria-label="التنقل بين الواجهات">
       <a href="../index.html">الرئيسية</a>
       <a href="../student/">الطالب</a>
@@ -36,12 +36,12 @@
     <!-- Right Column: Primary Controls + Next Up request + inline chat -->
     <div>
       <section class="card">
-        <div class="row" style="justify-content:space-between;align-items:flex-start">
-          <div>
-            <h2 id="tripTitle" style="margin:0 0 2px;font-size:19px">جاري التحميل…</h2>
+        <div class="row drv-trip-head">
+          <div class="grow">
+            <h2 id="tripTitle" style="margin:0 0 2px;font-size:18px">جاري التحميل…</h2>
             <p class="mute" id="tripMeta" style="margin:0"></p>
           </div>
-          <select id="tripSel" aria-label="اختيار رحلة السائق" style="width:auto;min-width:165px;padding:5px 10px;font-size:13px;font-weight:700"></select>
+          <select id="tripSel" class="trip-sel" aria-label="اختيار رحلة السائق"></select>
         </div>
 
         <ol class="chain" id="chain"></ol>
@@ -50,7 +50,7 @@
         <p class="mute hint" id="hint"></p>
 
         <div class="next-card" id="nextCard">
-          <div>
+          <div class="grow">
             <span class="mute" id="nextLabel">أقرب طلب ركوب</span>
             <strong class="next-name" id="nextName">—</strong>
             <span class="badge info" id="nextWait" style="margin-top:4px"></span>
@@ -76,14 +76,14 @@
       </section>
     </div>
 
-    <!-- Left Column: Live Route Map + Ready requests (bottom sheet) -->
+    <!-- Left Column: Live Route Map + Ready requests -->
     <div>
       <section class="card" style="padding:12px">
         <div class="row" style="justify-content:space-between;margin-bottom:8px">
           <h3 style="margin:0">خريطة المسار والطلبات</h3>
-          <span class="mute">الطلاب بيظهروا بشكل مجهول حفاظاً على الخصوصية</span>
+          <span class="mute" style="font-size:12.5px">الطلاب بيظهروا بشكل مجهول حفاظاً على الخصوصية</span>
         </div>
-        <div class="map" id="map" style="height:330px;margin:0"></div>
+        <div class="map drv-map" id="map"></div>
       </section>
 
       <section class="card">

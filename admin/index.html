@@ -2,7 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#165b40">
 <title>Lotus Bus — لوحة الإدارة</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="../shared/mb.css">
@@ -11,20 +12,21 @@
 
   .clock {
     font-variant-numeric: tabular-nums;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 700;
     color: var(--ink-soft);
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 4px 10px;
+    padding: 3px 9px;
     background: var(--bg);
+    direction: ltr;
   }
 
   .adm-shell {
     display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 230px minmax(0, 1fr);
     gap: 16px;
-    max-width: 1240px;
+    max-width: 1280px;
     margin: 0 auto;
     padding: 16px;
     align-items: start;
@@ -40,6 +42,7 @@
     border-radius: 12px;
     background: var(--card);
     border: 1px solid var(--line);
+    box-shadow: var(--sh);
   }
 
   .adm-nav a {
@@ -64,8 +67,9 @@
   .adm-main { min-width: 0; }
   .adm-main h2 { font-size: 19px; margin: 0 0 10px; font-weight: 800; }
   .adm-main h3 { font-size: 15.5px; margin: 0 0 8px; font-weight: 800; }
-  .head { margin-bottom: 10px; justify-content: space-between; }
-  .toolbar input[type=date] { width: auto; }
+  .head { margin-bottom: 10px; justify-content: space-between; gap: 10px; }
+  .toolbar { gap: 8px; }
+  .toolbar input[type=date], .toolbar select { width: auto; min-width: 150px; }
   .acts { white-space: nowrap; }
   .acts .btn { margin-inline-end: 4px; }
   td input, td select { width: auto; min-width: 110px; padding: 5px 8px; }
@@ -75,9 +79,11 @@
   .scan-res { padding: 10px 14px; border-radius: 8px; margin-top: 8px; font-weight: 700; }
   .scan-res.ok { background: var(--ok-bg); color: var(--ok); }
   .scan-res.bad { background: var(--bad-bg); color: var(--bad); }
-  .rule { margin-bottom: 8px; flex-wrap: nowrap; }
-  .rule input { flex: 1; }
-  .priv li { margin-bottom: 6px; }
+  .rule { margin-bottom: 8px; flex-wrap: nowrap; gap: 8px; }
+  .rule input { flex: 1; min-width: 0; }
+  .rule .btn { flex-shrink: 0; }
+  .priv ul { margin: 0; padding-inline-start: 18px; }
+  .priv li { margin-bottom: 6px; font-size: 14px; }
   .adm-busicon { background: none; border: 0; }
   .adm-note { font-size: 13px; color: var(--mute); margin: 8px 0 0; }
 
@@ -95,15 +101,17 @@
     padding: 14px 16px;
     border: 1px solid var(--line);
     border-right: 4px solid var(--brand);
+    box-shadow: var(--sh);
+    min-width: 0;
   }
 
   .kcard.ok { border-right-color: var(--ok); }
   .kcard.info { border-right-color: var(--info); }
   .kcard.warn { border-right-color: var(--warn); }
 
-  .kcard .klabel { font-size: 13px; color: var(--mute); font-weight: 700; }
+  .kcard .klabel { font-size: 12.5px; color: var(--mute); font-weight: 700; }
   .kcard .kval { font-size: 24px; font-weight: 800; margin: 2px 0; color: var(--ink); }
-  .kcard .ksub { font-size: 12px; color: var(--mute); }
+  .kcard .ksub { font-size: 11.5px; color: var(--mute); }
 
   .live-pill {
     display: inline-flex;
@@ -139,15 +147,67 @@
   }
 
   @media (max-width: 960px) {
-    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .adm-shell { grid-template-columns: 1fr; }
+    .kpis {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .adm-shell {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
+      padding: 12px;
+    }
     .adm-nav {
-      position: static;
+      position: sticky;
+      top: 53px;
+      z-index: 60;
       flex-direction: row;
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
       padding: 6px;
+      border-radius: 10px;
     }
-    .adm-nav a { white-space: nowrap; }
+    .adm-nav::-webkit-scrollbar {
+      display: none;
+    }
+    .adm-nav a {
+      white-space: nowrap;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+  }
+
+  @media (max-width: 680px) {
+    .clock {
+      margin-inline-start: auto;
+    }
+    .adm-shell {
+      padding: 10px;
+    }
+    .adm-nav {
+      top: 0;
+    }
+    .kpis {
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .kcard {
+      padding: 11px 12px;
+      border-radius: 10px;
+    }
+    .kcard .kval {
+      font-size: 20px;
+    }
+    .map.live {
+      height: 260px;
+    }
+    .toolbar {
+      width: 100%;
+    }
+    .toolbar input[type=date], .toolbar select {
+      flex: 1;
+      min-width: 0;
+    }
   }
 </style>
 </head>

@@ -586,7 +586,7 @@
     return '<div class="card">' +
         '<div class="row" style="justify-content:space-between">' +
           '<div><h2 style="margin:0 0 4px">حجز المقاعد وقائمة الانتظار</h2><div class="mute">' + esc('من ' + route.fromName + ' → إلى ' + route.toName) + '</div></div>' +
-          '<div class="row">' + tabs + '</div>' +
+          '<div class="row route-tabs">' + tabs + '</div>' +
         '</div>' +
       '</div>' +
       '<div class="grid g2">' +
@@ -877,6 +877,10 @@
       e.preventDefault();
       sendChat(e.target.dataset.trip);
     }
+  });
+
+  window.addEventListener('resize', () => {
+    if (mapCtl && mapCtl.map) mapCtl.map.invalidateSize();
   });
 
   window.addEventListener('hashchange', () => {
