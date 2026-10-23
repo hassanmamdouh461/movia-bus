@@ -1,3 +1,8 @@
-name = "lotus-bus"
+name = "movia-bus"
 compatibility_date = "2026-10-01"
 pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lotus-bus-db"
+database_id = "f9458707-bfe3-4441-a99b-4458c7fa1d74"

@@ -164,7 +164,149 @@
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
   function emit() { subs.forEach((f) => { try { f(state); } catch (e) { console.error(e); } }); }
   state = load() || seed(); save();
-  window.addEventListener('storage', (e) => { if (e.key === KEY) { state = load() || state; emit(); } });
+
+  // ---------- cloud sync: every device shares one state through /api/sync (Cloudflare Pages Function + D1) ----------
+  // The state is split into small documents (one per item of each collection, id = item.id). Local changes are
+  // diffed against `shadow` and pushed; the server's changes are polled and merged (last write wins per document).
+  // `me` (this device's own student profile / UI flags) and `v` stay local. If the API is unreachable the app
+  // simply keeps working on its local copy and reconnects by itself.
+  const API = '/api/sync';
+  const LOCAL_ONLY = { v: 1, me: 1 };
+  const SORT = { notifications: -1, reports: -1, chat: 1, sharedLinks: 1 };   // by ts (1 = oldest first)
+  const sync = { ready: false, since: 0, shadow: {}, pending: {}, busy: false, offset: 0, fails: 0 };
+
+  // one shared clock for all devices: Date.now() is shifted by the server's offset once we know it
+  const rawNow = Date.now.bind(Date);
+  Date.now = () => rawNow() + sync.offset;
+
+  function docsOf(s) {
+    const m = {};
+    m['_meta|v'] = JSON.stringify(s.v);
+    Object.keys(s).forEach((k) => {
+      if (LOCAL_ONLY[k]) return;
+      const v = s[k];
+      if (Array.isArray(v)) v.forEach((it) => { if (it && it.id != null) m[k + '|' + it.id] = JSON.stringify(it); });
+      else if (v && typeof v === 'object') m[k + '|_'] = JSON.stringify(v);
+    });
+    return m;
+  }
+  const splitKey = (key) => { const i = key.indexOf('|'); return [key.slice(0, i), key.slice(i + 1)]; };
+  const allOps = () => Object.keys(sync.shadow).map((key) => { const [k, id] = splitKey(key); return { k, id, j: sync.shadow[key] }; });
+
+  async function api(method, qs, body) {
+    const r = await fetch(API + (qs || ''), {
+      method, cache: 'no-store', keepalive: !!body,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!r.ok) throw new Error('sync ' + r.status);
+    return r.json();
+  }
+
+  async function send(ops, reset) {
+    if (!ops.length && !reset) return;
+    const keys = ops.map((o) => o.k + '|' + o.id);
+    keys.forEach((k) => { sync.pending[k] = (sync.pending[k] || 0) + 1; });
+    try {
+      for (let i = 0; i < Math.max(1, ops.length); i += 300) {
+        await api('POST', '', { ops: ops.slice(i, i + 300), reset: !!reset && i === 0 });
+      }
+    } catch (e) {
+      // not delivered: forget what we believed was synced so the next push sends it again
+      ops.forEach((o) => { delete sync.shadow[o.k + '|' + o.id]; });
+      sync.fails++;
+      setTimeout(pushDiff, 3000);
+    } finally {
+      keys.forEach((k) => { if (--sync.pending[k] <= 0) delete sync.pending[k]; });
+    }
+  }
+
+  function pushDiff() {
+    if (!sync.ready) return;
+    const cur = docsOf(state), ops = [];
+    Object.keys(cur).forEach((key) => {
+      if (sync.shadow[key] !== cur[key]) { const [k, id] = splitKey(key); ops.push({ k, id, j: cur[key] }); }
+    });
+    Object.keys(sync.shadow).forEach((key) => {
+      if (!(key in cur)) { const [k, id] = splitKey(key); ops.push({ k, id, del: 1 }); }
+    });
+    if (!ops.length) return;
+    sync.shadow = cur;
+    send(ops);
+  }
+
+  function applyRemote(docs) {
+    let changed = false;
+    const sortKeys = {};
+    docs.forEach((d) => {
+      sync.since = Math.max(sync.since, d.t);
+      const key = d.k + '|' + d.id;
+      if (sync.pending[key] || d.k === '_meta') return;
+      if (d.d) {
+        if (!(key in sync.shadow)) return;
+        delete sync.shadow[key];
+        if (d.id !== '_' && Array.isArray(state[d.k])) state[d.k] = state[d.k].filter((it) => String(it.id) !== d.id);
+        changed = true;
+        return;
+      }
+      if (sync.shadow[key] === d.j) return;
+      let obj; try { obj = JSON.parse(d.j); } catch (e) { return; }
+      sync.shadow[key] = d.j;
+      if (d.id === '_') state[d.k] = obj;
+      else {
+        if (!Array.isArray(state[d.k])) state[d.k] = [];
+        const i = state[d.k].findIndex((it) => String(it.id) === d.id);
+        if (i >= 0) state[d.k][i] = obj; else state[d.k].push(obj);
+        if (SORT[d.k]) sortKeys[d.k] = true;
+      }
+      changed = true;
+    });
+    Object.keys(sortKeys).forEach((k) => state[k].sort((a, b) => SORT[k] * ((a.ts || 0) - (b.ts || 0))));
+    return changed;
+  }
+
+  async function pull() {
+    if (sync.busy) return;
+    sync.busy = true;
+    try {
+      const d = await api('GET', '?since=' + sync.since);
+      sync.fails = 0;
+      if (d.now) { const off = d.now - rawNow(); sync.offset = sync.ready ? Math.round(sync.offset * 0.7 + off * 0.3) : off; }
+      if (!sync.ready) {
+        const mv = (d.docs.find((x) => x.k === '_meta' && x.id === 'v') || {}).j;
+        if (!d.docs.length || mv !== JSON.stringify(state.v)) {
+          // server empty (or an older data version): this device's data becomes the shared seed
+          sync.shadow = docsOf(state); sync.ready = true;
+          await send(allOps(), true);
+        } else {
+          // adopt the shared state
+          Object.keys(state).forEach((k) => { if (Array.isArray(state[k]) && !LOCAL_ONLY[k]) state[k] = []; });
+          sync.shadow = {}; sync.ready = true;
+          if (applyRemote(d.docs)) { save(); emit(); }
+        }
+        return;
+      }
+      if (d.docs.length && applyRemote(d.docs)) { save(); emit(); }
+    } catch (e) {
+      sync.fails++;
+    } finally {
+      sync.busy = false;
+    }
+  }
+  (function startSync() {
+    if (!/^https?:$/.test(location.protocol)) return;
+    pull();
+    setInterval(() => { if (!document.hidden || sync.fails === 0) pull(); }, 2000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
+  })();
+
+  // another tab on this device saved a newer copy: take it, that tab pushes its own changes
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEY) { state = load() || state; if (sync.ready) sync.shadow = docsOf(state); emit(); }
+  });
+
+  /** called after every local mutation */
+  function commit() { save(); pushDiff(); emit(); }
 
   // progress = elapsed driving time (minus time spent paused for boarding) / full trip time
   function progressOf(trip) {
@@ -179,9 +321,15 @@
     drv: byId(drivers), bus: byId(buses),
     get state() { return state; },
     /** mutate state: MB.update(s => {...}) — saves + notifies every page/tab */
-    update(fn) { fn(state); save(); emit(); },
+    update(fn) { fn(state); commit(); },
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
-    reset() { state = seed(); save(); emit(); },
+    reset() {
+      state = seed(); save();
+      if (sync.ready) { sync.shadow = docsOf(state); send(allOps(), true); }
+      emit();
+    },
+    /** true once this device is connected to the shared (cloud) state */
+    get online() { return sync.ready && sync.fails < 3; },
     polyOf, progressOf, snap,
     trip: (id) => state.trips.find((t) => t.id === id),
     /** live bus position for an en_route trip: {lat,lng,progress,paused} or null */
@@ -252,7 +400,7 @@
       });
       if (p >= 1) { t.startedAt = now; t.pausedTotal = 0; t.pauseStart = null; changed = true; }
     });
-    if (changed) { save(); emit(); }
+    if (changed) commit();
   }, 1000);
 
   window.MB = MB;

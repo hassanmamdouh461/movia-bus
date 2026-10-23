@@ -296,17 +296,139 @@
     }).join('');
   }
 
-  /* subtle alert when a NEW waiting request shows up for one of this driver's trips */
-  function checkNewRequests() {
-    const all = MB.state.pickups.filter((k) => k.status === 'accepted');
-    if (knownPickups === null) { knownPickups = new Set(all.map((k) => k.id)); return; }
-    const myTrips = driverTrips().map((t) => t.id);
-    const fresh = all.filter((k) => !knownPickups.has(k.id));
-    all.forEach((k) => knownPickups.add(k.id));
-    if (fresh.some((k) => myTrips.indexOf(k.tripId) >= 0)) {
-      if (navigator.vibrate) { try { navigator.vibrate([120]); } catch (e) {} }
-      toast('طلب ركوب جديد من طالب على المسار');
+  /* ---- driver-safety alerts: chime (Web Audio), Arabic voice, vibration, top banner ---- */
+  const ALERT_KEY = 'lotus_driver_alerts';
+  let alertsEnabled = true;
+  try { alertsEnabled = localStorage.getItem(ALERT_KEY) !== '0'; } catch (e) {}
+  let audioCtx = null, audioReady = false, bannerTimer = null, voiceTimer = null;
+
+  function getAudioCtx() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      try { audioCtx = new AC(); } catch (e) { return null; }
     }
+    return audioCtx;
+  }
+
+  function updateAudioHint() { $('audioHint').hidden = audioReady; }
+
+  /* Browsers only allow audio after a user gesture: unlock on the first tap/key, and when the trip starts. */
+  function unlockAudio() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    try {
+      const buf = ctx.createBuffer(1, 1, 22050), src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch (e) {}
+    Promise.resolve(ctx.resume ? ctx.resume() : null).catch(() => {}).then(() => {
+      if (ctx.state === 'running' && !audioReady) {
+        audioReady = true;
+        document.removeEventListener('pointerdown', unlockAudio);
+        document.removeEventListener('keydown', unlockAudio);
+      }
+      updateAudioHint();
+    });
+  }
+  document.addEventListener('pointerdown', unlockAudio);
+  document.addEventListener('keydown', unlockAudio);
+
+  function playChime() {
+    const ctx = getAudioCtx();
+    if (!ctx || ctx.state !== 'running') return;
+    try {
+      const t0 = ctx.currentTime;
+      [[784, 0], [1047, 0.24]].forEach(([freq, dt]) => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t0 + dt);
+        gain.gain.exponentialRampToValueAtTime(0.4, t0 + dt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0 + dt);
+        osc.stop(t0 + dt + 0.22);
+      });
+    } catch (e) {}
+  }
+
+  const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+  const arNum = (s) => String(s).replace(/\d/g, (d) => AR_DIGITS[d]);
+  /* same thresholds as fmtDist, spoken in Arabic */
+  function speechDist(m) {
+    return m < 1000 ? arNum(Math.round(m)) + ' متر' : arNum((m / 1000).toFixed(1).replace('.', '٫')) + ' كيلومتر';
+  }
+
+  function speak(text) {
+    try {
+      if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') return;
+      const voices = speechSynthesis.getVoices() || [];
+      const voice = voices.find((v) => /^ar[-_]EG/i.test(v.lang)) || voices.find((v) => /^ar/i.test(v.lang));
+      if (!voice) return;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = voice;
+      u.lang = voice.lang || 'ar-EG';
+      u.rate = 0.95;
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+
+  function hideBanner() {
+    clearTimeout(bannerTimer);
+    $('alertBanner').hidden = true;
+  }
+
+  function showBanner(r, more) {
+    const b = $('alertBanner');
+    $('alertTitle').textContent = 'طالب جديد قدامك — ' + fmtDist(r.dist);
+    $('alertSub').textContent = 'يوصل خلال ' + (r.eta < 1 ? 'أقل من دقيقة' : r.eta + ' دقيقة');
+    $('alertMore').textContent = more > 0 ? '+' + more + ' طلبات' : '';
+    $('alertMore').hidden = !(more > 0);
+    b.hidden = false;
+    b.classList.remove('show');
+    void b.offsetWidth; // restart the entrance animation
+    b.classList.add('show');
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(hideBanner, 6000);
+  }
+
+  /* r = { dist (m), eta (min) } of the nearest new request; more = other new requests arriving together */
+  function fireAlert(r, more) {
+    playChime();
+    if (navigator.vibrate) { try { navigator.vibrate([200, 100, 200]); } catch (e) {} }
+    showBanner(r, more);
+    clearTimeout(voiceTimer);
+    voiceTimer = setTimeout(() => speak('طالب جديد قدامك، على بعد ' + speechDist(r.dist)), 900);
+  }
+
+  function alertsOn() { return alertsEnabled; }
+
+  /* new (accepted|waiting) requests ahead of the bus on the trip being driven, not seen by this page before */
+  function checkNewRequests() {
+    const active = MB.state.pickups.filter((k) => k.status === 'accepted' || k.status === 'waiting');
+    if (knownPickups === null) { knownPickups = new Set(active.map((k) => k.id)); return; }
+    const fresh = active.filter((k) => !knownPickups.has(k.id));
+    active.forEach((k) => knownPickups.add(k.id));
+    const drive = driverTrips().find((t) => t.status === 'en_route');
+    if (!drive || !fresh.length) return;
+    const freshIds = new Set(fresh.filter((k) => k.tripId === drive.id).map((k) => k.id));
+    if (!freshIds.size) return;
+    const ahead = aheadRequests(drive)
+      .filter((r) => freshIds.has(r.k.id) && r.k.status !== 'boarding')
+      .sort((a, b) => a.dist - b.dist);
+    if (!ahead.length || !alertsOn()) return;
+    fireAlert(ahead[0], ahead.length - 1);
+  }
+
+  function renderAlertToggle() {
+    const b = $('alertToggle');
+    b.textContent = '🔔 التنبيهات: ' + (alertsEnabled ? 'تشغيل' : 'إيقاف');
+    b.setAttribute('aria-pressed', String(alertsEnabled));
+    if (!alertsEnabled) hideBanner();
   }
 
   function chatMsgs(trip) {
@@ -402,7 +524,21 @@
       refresh();
     };
 
+    $('alertToggle').onclick = () => {
+      alertsEnabled = !alertsEnabled;
+      try { localStorage.setItem(ALERT_KEY, alertsEnabled ? '1' : '0'); } catch (e) {}
+      renderAlertToggle();
+      if (alertsEnabled) unlockAudio();
+    };
+    /* test always fires (explicit action), with a fake 800 m request */
+    $('alertTest').onclick = () => {
+      unlockAudio();
+      fireAlert({ dist: 800, eta: 2 }, 0);
+    };
+    $('alertBanner').addEventListener('click', hideBanner);
+
     $('btnMain').onclick = () => {
+      unlockAudio();
       const t = currentTrip();
       if (!t) return;
       if (t.status === 'scheduled' || t.status === 'at_start' || t.status === 'arrived') {
@@ -447,6 +583,8 @@
   initMap();
   renderDriverSelect();
   bindActions();
+  renderAlertToggle();
+  updateAudioHint();
   refresh();
   MB.subscribe(refresh);
   setInterval(refresh, 1000);

@@ -31,7 +31,19 @@
   </div>
 </header>
 
+<div class="alert-banner" id="alertBanner" role="alert" aria-live="assertive" hidden>
+  <strong class="alert-title" id="alertTitle"></strong>
+  <span class="alert-sub" id="alertSub"></span>
+  <span class="alert-more" id="alertMore" hidden></span>
+  <span class="alert-close">اضغط للإغلاق</span>
+</div>
+
 <main class="wrap">
+  <div class="alert-bar">
+    <button class="alert-toggle" id="alertToggle" type="button" aria-pressed="true">🔔 التنبيهات: تشغيل</button>
+    <button class="alert-test" id="alertTest" type="button">اختبار التنبيه</button>
+    <span class="audio-hint" id="audioHint">اضغط في أي مكان لتفعيل الصوت</span>
+  </div>
   <div class="drv-grid">
     <!-- Primary Column: Live Route Map + Ready requests -->
     <div class="drv-col">
