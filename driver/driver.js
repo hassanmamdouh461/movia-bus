@@ -6,12 +6,6 @@
   const DRIVER_KEY = 'mb_driver_id';
   const QUICK_REPLIES = ['أنا في الطريق', 'وصلت نقطة الركوب', 'هنتظر دقيقة', 'هتأخر 5 دقائق'];
   const STATUS_STEPS = [['scheduled', 'لم تبدأ'], ['en_route', 'في الطريق'], ['arrived', 'وصل الجامعة / انتهت']];
-  const SEED_CHAT = [
-    { from: 'student', text: 'السلام عليكم يا كابتن، الحافلة فين حالياً؟', ago: 12 * 60000 },
-    { from: 'driver', text: 'وعليكم السلام، أنا في الطريق وهشوف طلبات الركوب', ago: 10 * 60000 },
-    { from: 'student', text: 'تمام، أنا منتظر عند نقطة الركوب', ago: 3 * 60000 },
-  ];
-
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -435,18 +429,6 @@
     return (MB.state.chat || []).filter((m) => m.tripId === trip.id).sort((a, b) => a.ts - b.ts);
   }
 
-  function seedChat(trip) {
-    if (chatMsgs(trip).length) return false;
-    const now = Date.now();
-    MB.update((s) => {
-      s.chat = s.chat || [];
-      SEED_CHAT.forEach((m, i) => s.chat.push({
-        id: 'seed' + trip.id + i, tripId: trip.id, from: m.from, text: m.text, ts: now - m.ago,
-      }));
-    });
-    return true;
-  }
-
   function renderChat(trip) {
     const msgs = chatMsgs(trip).slice(-50);
     const sig = trip.id + '|' + msgs.map((m) => m.id).join(',');
@@ -488,7 +470,6 @@
     checkNewRequests();
     const trip = currentTrip();
     if (!trip) return;
-    if (seedChat(trip)) return;
 
     renderHeader(trip);
     if (trip.id !== lastTripId) {
