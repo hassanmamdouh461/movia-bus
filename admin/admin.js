@@ -116,19 +116,17 @@
     if (!next) return toast('لا توجد رحلة تالية لنفس الخط للدمج فيها', true);
     if (!window.confirm('دمج ' + titleOf(t) + ' في ' + titleOf(next) + '؟')) return;
     const snap = { ...t };
-    const total = t.booked + t.waitlist;
-    const fit = Math.min(total, Math.max(0, next.capacity - next.booked));
+    const total = t.booked;
     MB.update((s) => {
       const n = s.trips.find((x) => x.id === next.id);
-      n.booked += fit;
-      n.waitlist += total - fit;
+      n.booked += total;
       retireTrip(s, id);
     });
     if (snap.published !== false) MB.notify('تم دمج ' + titleOf(snap) + ' في ' + titleOf(next) + ' (' + total + ' راكب)', 'info');
     toast('تم دمج ' + total + ' راكب في الرحلة التالية');
   }
 
-  // "زوّد حافلة": adds a draft bus for the same line/time, moves waitlisted students onto it
+  // "زوّد حافلة": adds a draft bus for the same line/time (students stay on their booked trip)
   function addBusShortcut(id) {
     const t = MB.trip(id);
     if (!t) return;
@@ -137,14 +135,9 @@
     const bus = MB.buses.find((b) => !busyBus.has(b.id));
     const drv = MB.drivers.find((d) => !busyDrv.has(d.id));
     if (!bus || !drv) return toast('لا توجد حافلة أو سائق متاح في هذا الموعد', true);
-    const moved = Math.min(t.waitlist, bus.capacity);
-    const nt = { id: MB.newTripId(), routeId: t.routeId, direction: t.direction, time: t.time, scheduledAt: t.scheduledAt, driverId: drv.id, busId: bus.id, capacity: bus.capacity, booked: moved, waitlist: 0, status: 'scheduled', startedAt: null, published: false };
-    MB.update((s) => {
-      s.trips.push(nt);
-      const src = s.trips.find((x) => x.id === id);
-      if (src) src.waitlist = Math.max(0, src.waitlist - moved);
-    });
-    MB.notify('أُضيفت حافلة ' + plateOf(bus.id) + ' لـ' + titleOf(t) + ' (' + moved + ' من قائمة الانتظار) بانتظار تأكيد النشر', 'info');
+    const nt = { id: MB.newTripId(), routeId: t.routeId, direction: t.direction, time: t.time, scheduledAt: t.scheduledAt, driverId: drv.id, busId: bus.id, capacity: bus.capacity, booked: 0, status: 'scheduled', startedAt: null, published: false };
+    MB.update((s) => { s.trips.push(nt); });
+    MB.notify('أُضيفت حافلة ' + plateOf(bus.id) + ' لـ' + titleOf(t) + ' بانتظار تأكيد النشر', 'info');
     toast('أُضيفت الحافلة كمسودة. أكّد النشر من تبويب نشر الجدول');
   }
 
@@ -170,12 +163,9 @@
     MB.update((s) => {
       if (editId) {
         const t = s.trips.find((x) => x.id === editId);
-        const total = t.booked + t.waitlist;
         Object.assign(t, { routeId: route.id, direction: data.direction === 'back' ? 'back' : 'go', time: data.time, scheduledAt: sched, driverId: drv.id, busId: bus.id, capacity: bus.capacity });
-        t.booked = Math.min(total, bus.capacity);
-        t.waitlist = total - t.booked;
       } else {
-        const t = { id: MB.newTripId(), routeId: route.id, direction: data.direction === 'back' ? 'back' : 'go', time: data.time, scheduledAt: sched, driverId: drv.id, busId: bus.id, capacity: bus.capacity, booked: 0, waitlist: 0, status: 'scheduled', startedAt: null, published: false };
+        const t = { id: MB.newTripId(), routeId: route.id, direction: data.direction === 'back' ? 'back' : 'go', time: data.time, scheduledAt: sched, driverId: drv.id, busId: bus.id, capacity: bus.capacity, booked: 0, status: 'scheduled', startedAt: null, published: false };
         s.trips.push(t);
       }
     });
@@ -206,7 +196,7 @@
     const bus = MB.buses.find((b) => !usedBus.has(b.id));
     const drv = MB.drivers.find((d) => !usedDrv.has(d.id));
     if (!bus || !drv) return toast('لا توجد حافلة أو سائق متاح في هذا الموعد', true);
-    draft.splice(i + 1, 0, { ...src, src: null, id: null, busId: bus.id, driverId: drv.id, capacity: bus.capacity, booked: 0, waitlist: 0, status: 'scheduled', startedAt: null, published: false, removed: false, isNew: true });
+    draft.splice(i + 1, 0, { ...src, src: null, id: null, busId: bus.id, driverId: drv.id, capacity: bus.capacity, booked: 0, status: 'scheduled', startedAt: null, published: false, removed: false, isNew: true });
     renderView();
   }
 
@@ -220,7 +210,7 @@
       draft.forEach((d) => {
         if (d.isNew) {
           const bus = MB.bus[d.busId];
-          const t = { id: MB.newTripId(), routeId: d.routeId, direction: d.direction, time: d.time, scheduledAt: at(day, d.time), driverId: d.driverId, busId: d.busId, capacity: bus.capacity, booked: 0, waitlist: 0, status: 'scheduled', startedAt: null, published: true };
+          const t = { id: MB.newTripId(), routeId: d.routeId, direction: d.direction, time: d.time, scheduledAt: at(day, d.time), driverId: d.driverId, busId: d.busId, capacity: bus.capacity, booked: 0, status: 'scheduled', startedAt: null, published: true };
           s.trips.push(t);
           added++;
           return;
@@ -301,7 +291,7 @@
       const acts = editable
         ? '<button class="btn sm sec" data-act="tripEdit" data-id="' + t.id + '">تعديل</button> <button class="btn sm bad" data-act="tripCancel" data-id="' + t.id + '">إلغاء</button>'
         : '<span class="mute">—</span>';
-      return '<tr><td>' + esc(t.time) + '</td><td>' + esc(routeName(t.routeId)) + ' · ' + dirLabel(t.direction) + '</td><td>' + esc(drvName(t.driverId)) + '</td><td>' + esc(plateOf(t.busId)) + ' <span class="mute">(' + t.capacity + ')</span></td><td>' + t.booked + ' / ' + t.capacity + '</td><td>' + badgeStatus(t) + '</td><td class="acts">' + acts + '</td></tr>';
+      return '<tr><td>' + esc(t.time) + '</td><td>' + esc(routeName(t.routeId)) + ' · ' + dirLabel(t.direction) + '</td><td>' + esc(drvName(t.driverId)) + '</td><td>' + esc(plateOf(t.busId)) + ' <span class="mute">(' + t.capacity + ')</span></td><td>' + t.booked + ' مسجّل</td><td>' + badgeStatus(t) + '</td><td class="acts">' + acts + '</td></tr>';
     }).join('');
     return head('الرحلات', '<div class="row toolbar"><input type="date" data-chg="tripDay" value="' + esc(tripDay) + '"><button class="btn" data-act="tripAdd">+ إضافة رحلة</button></div>') +
       '<div class="card">' +
@@ -315,7 +305,7 @@
     const booked = trips.reduce((a, t) => a + t.booked, 0);
     const cap = trips.reduce((a, t) => a + t.capacity, 0);
     const weak = trips.filter((t) => canChange(t) && fillPct(t) < 30).length;
-    const crowded = trips.filter((t) => t.waitlist > 0).length;
+    const crowded = trips.filter((t) => t.booked > t.capacity).length;
     const rows = trips.map((t) => {
       const p = fillPct(t);
       const weakRow = canChange(t) && p < 30;
@@ -325,18 +315,17 @@
         acts += '<button class="btn sm bad" data-act="demCancel" data-id="' + t.id + '">إلغاء</button> ';
         acts += '<button class="btn sm sec" data-act="demMerge" data-id="' + t.id + '"' + (next ? '' : ' disabled title="لا توجد رحلة تالية"') + '>دمج</button> ';
       }
-      if (t.waitlist > 0 && canChange(t)) acts += '<button class="btn sm ok" data-act="demAddBus" data-id="' + t.id + '">زوّد حافلة</button>';
+      if (t.booked > t.capacity && canChange(t)) acts += '<div class="mute" style="font-size:12.5px;margin-bottom:4px">عدد المسجلين أكبر من سعة الحافلة</div><button class="btn sm ok" data-act="demAddBus" data-id="' + t.id + '">زوّد حافلة</button>';
       return '<tr><td>' + esc(titleOf(t)) + '</td><td>' + badgeStatus(t) + '</td>' +
         '<td style="min-width:160px"><div class="bar"><i style="width:' + Math.min(100, p) + '%"></i></div></td>' +
-        '<td>' + t.booked + ' / ' + t.capacity + ' <span class="mute">(' + p + '%)</span></td>' +
-        '<td>' + (t.waitlist ? '<span class="badge warn">' + t.waitlist + ' منتظر</span>' : '—') + '</td>' +
+        '<td>' + t.booked + ' مسجّل <span class="mute">(' + p + '%)</span></td>' +
         '<td class="acts">' + (acts || '<span class="mute">—</span>') + '</td></tr>';
     }).join('');
     return head('لوحة الطلب المباشر', '') +
-      '<div class="grid g4">' + kpi('الحجوزات اليوم', booked) + kpi('المقاعد المتاحة', cap) + kpi('نسبة الامتلاء', (cap ? Math.round((booked / cap) * 100) : 0) + '%') + kpi('رحلات ضعيفة / مزدحمة', weak + ' / ' + crowded) + '</div>' +
+      '<div class="grid g4">' + kpi('الحجوزات اليوم', booked) + kpi('إجمالي السعة', cap) + kpi('نسبة التسجيل',(cap ? Math.round((booked / cap) * 100) : 0) + '%') + kpi('رحلات ضعيفة / مزدحمة', weak + ' / ' + crowded) + '</div>' +
       '<div class="card" style="margin-top:12px"><h3>الرحلات النشطة اليوم</h3>' +
-      (trips.length ? table(['الرحلة', 'الحالة', 'الامتلاء', 'المقاعد', 'الانتظار', 'إجراء'], rows) : empty('لا توجد رحلات نشطة اليوم.')) +
-      '<p class="adm-note">ضعيفة: أقل من 30% من المقاعد. مزدحمة: بها طلاب في قائمة الانتظار. الإجراءات المعلّقة تُنفَّذ بنقرة وتُرسَل تنبيهاً تلقائياً.</p></div>';
+      (trips.length ? table(['الرحلة', 'الحالة', 'نسبة التسجيل', 'المسجّلون', 'إجراء'], rows) : empty('لا توجد رحلات نشطة اليوم.')) +
+      '<p class="adm-note">ضعيفة: نسبة التسجيل أقل من 30%. مزدحمة: عدد المسجلين أكبر من سعة الحافلة. الإجراءات المعلّقة تُنفَّذ بنقرة وتُرسَل تنبيهاً تلقائياً.</p></div>';
   }
 
   // ---------- 3.4 live monitor ----------
@@ -391,7 +380,7 @@
       const pausedBadge = p.paused ? '<span class="badge warn">واقف للركوب</span>' : '<span class="badge ok">في الطريق</span>';
       return '<tr><td>' + esc(routeName(t.routeId)) + ' · ' + dirLabel(t.direction) + '</td><td>' + esc(drvName(t.driverId)) + '</td>' +
         '<td style="min-width:120px"><div class="bar"><i style="width:' + pctv + '%"></i></div> ' + pctv + '%</td>' +
-        '<td>' + t.booked + ' / ' + t.capacity + '</td><td>' + active + '</td><td>' + boarded + '</td><td>' + pausedBadge + '</td></tr>';
+        '<td>' + t.booked + ' مسجّل</td><td>' + active + '</td><td>' + boarded + '</td><td>' + pausedBadge + '</td></tr>';
     }).join('') : '<tr><td colspan="7" class="mute">لا توجد حافلات في الطريق الآن</td></tr>';
 
     // Ready requests: counts only (no student identity) across today's trips
@@ -437,7 +426,7 @@
         const cap = ts.reduce((a, t) => a + t.capacity, 0);
         return [lineLabel(r), ts.length, booked, cap, cap ? Math.round((booked / cap) * 100) : 0];
       });
-      return { name: 'passengers-per-line', head: ['الخط', 'عدد الرحلات', 'إجمالي الحجوزات', 'إجمالي المقاعد', 'نسبة الامتلاء %'], rows };
+      return { name: 'passengers-per-line', head: ['الخط', 'عدد الرحلات', 'إجمالي الحجوزات', 'إجمالي السعة', 'نسبة التسجيل %'], rows };
     }
     if (kind === 'punct') {
       const rows = trips.filter((t) => t.status === 'arrived' && t.startedAt).map((t) => {

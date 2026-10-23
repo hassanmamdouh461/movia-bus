@@ -187,8 +187,7 @@
     const paused = isPaused(trip);
     $('tripTitle').textContent = MB.tripLabel(trip);
     const plate = (MB.bus[trip.busId] || {}).plate || '';
-    $('tripMeta').textContent = 'حافلة: ' + plate + ' · الحجوزات: ' + trip.booked + ' من ' + trip.capacity +
-      (trip.waitlist ? ' · انتظار: ' + trip.waitlist : '');
+    $('tripMeta').textContent = 'حافلة: ' + plate + ' · المسجّلون: ' + trip.booked;
 
     const idx = s === 'en_route' ? 1 : s === 'arrived' ? 2 : 0;
     $('chain').innerHTML = STATUS_STEPS.map((st, i) => {

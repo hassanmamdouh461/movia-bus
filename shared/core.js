@@ -6,7 +6,7 @@
    those anonymous pins live as mandatory stops (status 'accepted' from the start). The driver can't skip: the bus
    always pauses at each pickup for a few seconds (boarding) and then continues. */
 (function () {
-  const KEY = 'lotus_state_v3';
+  const KEY = 'lotus_state_v2';
   const TRIP_MS = 8 * 60 * 1000;   // a full trip takes 8 real minutes in the demo
   const BOARD_MS = 8 * 1000;       // how long the bus waits at an accepted pickup
 
@@ -84,7 +84,7 @@
           trips.push({
             id, routeId: r.id, direction: dir, time: pad(h) + ':' + pad(m),
             scheduledAt: todayAt(h, m), driverId: driver.id, busId: bus.id, capacity: bus.capacity,
-            booked: Math.min(booked, bus.capacity), waitlist: booked > bus.capacity ? booked - bus.capacity : 0,
+            booked,
             status: 'scheduled', startedAt: null, pauseStart: null, pausedTotal: 0, published: true,
           });
         });
@@ -120,14 +120,13 @@
   function seed() {
     const trips = seedTrips();
     return {
-      v: 3,
+      v: 2,
       trips,
       pickups: seedPickups(trips),
       me: { name: 'أحمد محمد', studentId: '20231547' },
       myBookings: [
         { id: 'k1', tripId: trips.find((t) => t.routeId === 'r1' && t.direction === 'go' && t.time === '07:00').id, seat: 12, status: 'confirmed' },
       ],
-      waitlistMine: [],
       sharedLinks: [],
       notifications: [
         { id: 'n1', ts: Date.now() - 600000, text: 'الحافلة اقتربت منك', read: false, kind: 'bus' },
@@ -155,7 +154,7 @@
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
-      if (s && s.v === 3 && Array.isArray(s.trips)) {
+      if (s && s.v === 2 && Array.isArray(s.trips)) {
         const hasOpenGo = s.trips.some((t) => t.direction === 'go' && (t.status === 'scheduled' || t.status === 'at_start'));
         if (hasOpenGo) return s;
       }
