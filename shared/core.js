@@ -1,4 +1,4 @@
-/* Movia Bus — shared core: mock data + live simulation + synced state.
+/* Lotus Bus — shared core: mock data + live simulation + synced state.
    Include with <script src="../shared/core.js"></script>. Exposes window.MB.
 
    Model (no stations): each route is a fixed path (polyline). The bus drives continuously along it.
@@ -6,7 +6,7 @@
    those anonymous pins live as mandatory stops (status 'accepted' from the start). The driver can't skip: the bus
    always pauses at each pickup for a few seconds (boarding) and then continues. */
 (function () {
-  const KEY = 'movia_state_v5';
+  const KEY = 'lotus_state_v1';
   const TRIP_MS = 8 * 60 * 1000;   // a full trip takes 8 real minutes in the demo
   const BOARD_MS = 8 * 1000;       // how long the bus waits at an accepted pickup
 
@@ -23,10 +23,10 @@
   const R = byId(routes);
 
   const drivers = [
-    { id: 'd1', name: 'أ. محمود السيد',   phone: '01001234567', rating: 4.7 },
-    { id: 'd2', name: 'أ. عصام فتحي',     phone: '01112345678', rating: 4.5 },
-    { id: 'd3', name: 'أ. سعيد عبدالله',  phone: '01223456789', rating: 4.8 },
-    { id: 'd4', name: 'أ. ياسر منصور',    phone: '01554321098', rating: 4.2 },
+    { id: 'd1', name: 'أ. محمود السيد',   phone: '01001234567' },
+    { id: 'd2', name: 'أ. عصام فتحي',     phone: '01112345678' },
+    { id: 'd3', name: 'أ. سعيد عبدالله',  phone: '01223456789' },
+    { id: 'd4', name: 'أ. ياسر منصور',    phone: '01554321098' },
   ];
   const buses = [
     { id: 'b1', plate: 'ن ص ع 4821', capacity: 40 },
@@ -117,7 +117,7 @@
   function seed() {
     const trips = seedTrips();
     return {
-      v: 5,
+      v: 1,
       trips,
       pickups: seedPickups(trips),
       me: { name: 'أحمد محمد', studentId: '20231547' },
@@ -135,7 +135,6 @@
         { id: 'p2', ts: Date.now() - 172800000, studentName: 'كريم حسن', category: 'نظافة',      text: 'الحافلة تحتاج تنظيف.',            status: 'closed', assignee: 'م. هالة' },
         { id: 'p3', ts: Date.now() - 7200000, studentName: 'منى إبراهيم', category: 'سلوك السائق', text: 'السائق عدّى من غير ما يقف.',    status: 'open', assignee: '' },
       ],
-      ratings: [ { tripId: 't1', driverId: 'd1', stars: 5 }, { tripId: 't2', driverId: 'd2', stars: 4 } ],
       chat: [],
       policies: {
         lastReturn: '19:30',
@@ -151,7 +150,7 @@
   let state = null;
   const subs = new Set();
   function load() {
-    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 5) return s; } catch (e) {}
+    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 1) return s; } catch (e) {}
     return null;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }

@@ -1,4 +1,4 @@
-/* Movia Bus — Student Interface (Simplified, clean, responsive) */
+/* Lotus Bus — Student Interface (Simplified, clean, responsive) */
 (function () {
   'use strict';
   const MB = window.MB;
@@ -23,7 +23,6 @@
     pickMode: null,     // trip id while the student is choosing a point on the map
     locating: null,     // trip id while geolocation is being requested
     chat: {},
-    rate: {},
     report: { cat: REPORT_CATS[0], trip: '', text: '' },
     mapTrip: null,
   };
@@ -200,7 +199,7 @@
     s.me.approachDone = s.me.approachDone || {};
     if (s.me.chatSeenTs == null) s.me.chatSeenTs = now();
     if (s.me.chatReadTs == null) s.me.chatReadTs = now();
-    ['myBookings', 'waitlistMine', 'sharedLinks', 'notifications', 'reports', 'ratings', 'chat', 'pickups'].forEach((k) => {
+    ['myBookings', 'waitlistMine', 'sharedLinks', 'notifications', 'reports', 'chat', 'pickups'].forEach((k) => {
       if (!Array.isArray(s[k])) s[k] = [];
     });
     seedChat(s);
@@ -376,15 +375,6 @@
     if (input) input.value = '';
   }
 
-  function sendRating(tid) {
-    const stars = draft.rate[tid] || 5;
-    const t = trip(tid);
-    if (!t) return;
-    MB.update((st) => st.ratings.push({ tripId: tid, driverId: t.driverId, stars, by: st.me.name, ts: now() }));
-    delete draft.rate[tid];
-    toast('شكراً لك! تم حفظ تقييم الرحلة والسائق');
-  }
-
   function sendReport() {
     const d = draft.report;
     const txt = (d.text || '').trim();
@@ -449,7 +439,7 @@
     if (!t) {
       return '<div class="card"><h3>لا توجد رحلات حالياً</h3><a class="btn" href="#book">احجز رحلة الآن</a></div>';
     }
-    const drv = MB.drv[t.driverId] || { name: '—', rating: '—' };
+    const drv = MB.drv[t.driverId] || { name: '—' };
     const bus = MB.bus[t.busId] || { plate: '—' };
     const pk = myPk(s, t.id);
     const pkLive = !!pk && (pk.status === 'waiting' || pk.status === 'accepted' || pk.status === 'boarding');
@@ -474,7 +464,7 @@
               '<div class="mute">' + esc(label(t)) + '</div>' +
               '<div class="mute" style="font-size:12.5px">' + esc(routeLine(t)) + '</div>' +
               '<b class="tc-driver">' + esc(drv.name) + '</b>' +
-              '<div class="meta"><span class="plate">حافلة: ' + esc(bus.plate) + '</span><span class="rating">★ ' + esc(drv.rating) + '</span></div>' +
+              '<div class="meta"><span class="plate">حافلة: ' + esc(bus.plate) + '</span></div>' +
             '</div>' +
             statusBadge(t) +
           '</div>' +
@@ -612,7 +602,7 @@
   function chatView(s) {
     const t = pickActive(s);
     if (!t) return '<div class="card"><h3>لا توجد رحلة نشطة للمحادثة</h3></div>';
-    const drv = MB.drv[t.driverId] || { name: '—', rating: '—' };
+    const drv = MB.drv[t.driverId] || { name: '—' };
     const bus = MB.bus[t.busId] || { plate: '—' };
     const msgs = chatMsgs(s, t.id);
 
@@ -622,7 +612,7 @@
           '<span class="avatar">' + esc(drvInitial(t)) + '</span>' +
           '<div class="grow">' +
             '<b>' + esc(drv.name) + '</b>' +
-            '<div class="meta"><span>' + esc(label(t)) + '</span> · <span class="plate">' + esc(bus.plate) + '</span> · <span class="rating">★ ' + esc(drv.rating) + '</span></div>' +
+            '<div class="meta"><span>' + esc(label(t)) + '</span> · <span class="plate">' + esc(bus.plate) + '</span></div>' +
           '</div>' +
           statusBadge(t) +
         '</div>' +
@@ -643,8 +633,6 @@
   }
 
   function alertsView(s) {
-    const t = pickActive(s);
-    const curStars = (t && draft.rate[t.id]) || 5;
     const d = draft.report;
     const list = s.notifications.slice(0, 20);
     const rules = ((s.policies && s.policies.rules) || []).map((r) =>
@@ -683,21 +671,8 @@
         '</section>' +
       '</div>' +
 
-      /* Left Column: Rating & Problem Report */
+      /* Left Column: Problem Report */
       '<div>' +
-        (t
-          ? '<section class="card">' +
-              '<h3>تقييم الرحلة والسائق</h3>' +
-              '<div class="mute" style="margin-bottom:8px">' + esc(label(t)) + ' · السائق: ' + esc(MB.drv[t.driverId].name) + '</div>' +
-              '<div class="row" style="margin-bottom:10px">' +
-                [1, 2, 3, 4, 5].map((n) =>
-                  '<button class="btn ' + (n <= curStars ? '' : 'sec') + ' sm" type="button" data-act="star" data-trip="' + t.id + '" data-stars="' + n + '">' + n + ' ★</button>'
-                ).join('') +
-                '<button class="btn ok sm" type="button" data-act="rate-send" data-trip="' + t.id + '">حفظ التقييم</button>' +
-              '</div>' +
-            '</section>'
-          : '') +
-
         '<section class="card">' +
           '<h3>إرسال بلاغ أو شكوى للإدارة</h3>' +
           '<label>تصنيف البلاغ</label>' +
@@ -872,8 +847,6 @@
       case 'leave-wait': leaveWaitlist(d.id); break;
       case 'sim-free': simulateFreedSeat(d.trip); break;
       case 'cancel-booking': cancelBooking(d.id); break;
-      case 'star': draft.rate[d.trip] = Number(d.stars); render(); break;
-      case 'rate-send': sendRating(d.trip); break;
       case 'report-send': sendReport(); break;
       case 'notif-read': MB.update((st) => st.notifications.forEach((n) => { n.read = true; })); break;
       default: break;

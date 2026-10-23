@@ -1,4 +1,4 @@
-/* Movia Bus - admin (إدارة) interface. Depends on ../shared/core.js (window.MB). */
+/* Lotus Bus - admin (إدارة) interface. Depends on ../shared/core.js (window.MB). */
 (function () {
   'use strict';
   const MB = window.MB;
@@ -446,14 +446,6 @@
       });
       return { name: 'punctuality', head: ['الرحلة', 'التاريخ', 'موعد الجدول', 'وقت البدء الفعلي', 'التأخير (دقيقة)', 'في الموعد (حتى 5 دقائق)'], rows };
     }
-    const rows = MB.drivers.map((d) => {
-      const rs = MB.state.ratings.filter((r) => r.driverId === d.id);
-      const sum = rs.reduce((a, r) => a + r.stars, 0);
-      const avg = rs.length ? (sum / rs.length).toFixed(2) : '';
-      const combined = ((d.rating + sum) / (1 + rs.length)).toFixed(2);
-      return [d.name, d.rating, rs.length, avg, combined];
-    });
-    return { name: 'driver-ratings', head: ['السائق', 'التقييم الأساسي', 'عدد تقييمات الطلاب', 'متوسط تقييمات الطلاب', 'المتوسط المجمّع'], rows };
   }
 
   function toCsv(head, rows) {
@@ -487,9 +479,7 @@
     return head('التقارير والتصدير', '<div class="row no-print"><button class="btn sec" data-act="print">طباعة / حفظ PDF</button></div>') +
       '<div class="grid g4">' + kpi('إجمالي الحجوزات', pax) + kpi('نسبة الالتزام بالمواعيد', ratePct == null ? '—' : ratePct + '%') + kpi('رحلات منتهية', p.rows.length) + '</div>' +
       '<div class="card" style="margin-top:12px"><div class="row"><h3 class="grow">عدد الركاب لكل خط</h3><button class="btn sm no-print" data-act="rep" data-kind="lines">تحميل CSV</button></div>' + reportTable('lines') + '</div>' +
-      '<div class="card"><div class="row"><h3 class="grow">الالتزام بالمواعيد</h3><button class="btn sm no-print" data-act="rep" data-kind="punct">تحميل CSV</button></div>' + reportTable('punct') + '</div>' +
-      '<div class="card"><div class="row"><h3 class="grow">تقييمات السائقين</h3><button class="btn sm no-print" data-act="rep" data-kind="drivers">تحميل CSV</button></div>' + reportTable('drivers') +
-      '<p class="adm-note">المتوسط المجمّع = متوسط التقييم الأساسي مع تقييمات الطلاب معاً.</p></div>';
+      '<div class="card"><div class="row"><h3 class="grow">الالتزام بالمواعيد</h3><button class="btn sm no-print" data-act="rep" data-kind="punct">تحميل CSV</button></div>' + reportTable('punct') + '</div>';
   }
 
   // ---------- 3.7 complaints ----------
@@ -530,7 +520,7 @@
       '<div class="card priv"><h3>ما تراه كل جهة</h3><ul>' +
       '<li>السائق يرى <b>مواقع طلبات الركوب</b> المجهولة على مساره فقط، ولا يرى أسماء الطلاب أو أرقام هواتفهم.</li>' +
       '<li>لا تُعرض <b>أرقام هواتف الطلاب</b> في أي شاشة من لوحة الإدارة أو في التقارير المصدّرة.</li>' +
-      '<li>التقارير المصدّرة تحتوي على أعداد وإحصائيات مجمّعة (ركاب الخطوط، الالتزام بالمواعيد، تقييمات السائقين).</li>' +
+      '<li>التقارير المصدّرة تحتوي على أعداد وإحصائيات مجمّعة (ركاب الخطوط، الالتزام بالمواعيد).</li>' +
       '<li>شكاوى الطلاب تُعرض للإدارة فقط.</li>' +
       '</ul></div>';
   }

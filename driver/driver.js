@@ -1,4 +1,4 @@
-/* Movia Bus — Driver Interface (two-button control, students' Ready requests, inline chat).
+/* Lotus Bus — Driver Interface (two-button control, students' Ready requests, inline chat).
    No stations: the bus drives the route line; students' Ready requests appear as anonymous pins. */
 (function () {
   'use strict';

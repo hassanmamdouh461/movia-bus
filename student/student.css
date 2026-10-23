@@ -1,4 +1,4 @@
-/* Movia Bus — Student Interface CSS (Clean, natural, human-crafted design) */
+/* Lotus Bus — Student Interface CSS (Clean, natural, human-crafted design) */
 
 body {
   padding-bottom: 32px;
@@ -157,11 +157,6 @@ body.track .subnav {
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   padding: 1px 8px;
-}
-
-.rating {
-  color: #b45309;
-  font-weight: 700;
 }
 
 /* ETA Box */
