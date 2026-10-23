@@ -313,7 +313,7 @@
 
   // ---------- 3.3 demand board ----------
   function renderDemand() {
-    const trips = tripsToday().filter((t) => t.status !== 'cancelled' && t.status !== 'arrived');
+    const trips = tripsToday().filter((t) => t.status !== 'cancelled' && t.status !== 'arrived' && t.direction === 'go');
     const booked = trips.reduce((a, t) => a + t.booked, 0);
     const cap = trips.reduce((a, t) => a + t.capacity, 0);
     const weak = trips.filter((t) => canChange(t) && fillPct(t) < 30).length;

@@ -230,7 +230,7 @@
 
   function nextTripFor(s, t) {
     const free = s.trips
-      .filter((x) => x.id !== t.id && (x.status === 'scheduled' || x.status === 'at_start') && seatsLeft(x) > 0 && !bookingFor(s, x.id))
+      .filter((x) => x.id !== t.id && (x.status === 'scheduled' || x.status === 'at_start') && x.direction === 'go' && seatsLeft(x) > 0 && !bookingFor(s, x.id))
       .sort((a, b) => a.scheduledAt - b.scheduledAt);
     const same = free.filter((x) => x.routeId === t.routeId && x.direction === t.direction);
     return same[0] || free[0] || null;
@@ -240,6 +240,7 @@
   function bookAction(tid) {
     const s = MB.state;
     const t = trip(tid);
+    if (t && t.direction === 'back') return toast('رحلات العودة من غير حجز — الباص بيتحرك في ميعاده');
     if (!t || (t.status !== 'scheduled' && t.status !== 'at_start')) return toast('الحجز غير متاح لهذه الرحلة حالياً');
     if (bookingFor(s, tid)) return toast('لديك حجز مؤكد في هذه الرحلة بالفعل');
     if (seatsLeft(t) <= 0) return toast('الرحلة مكتملة، يمكنك الانضمام لقائمة الانتظار');
@@ -549,6 +550,12 @@
       '<button class="btn ' + (x.id === rid ? '' : 'sec') + '" type="button" data-act="route" data-route="' + x.id + '">' + esc(x.name) + '</button>'
     ).join(' ');
 
+    function returnRowHtml(t) {
+      return '<div class="trip-row">' +
+        '<div class="grow"><b>الساعة ' + esc(t.time) + '</b> · ' + statusBadge(t) + '<div class="meta">حافلة ' + esc(MB.bus[t.busId].plate) + ' · من الجامعة</div></div>' +
+      '</div>';
+    }
+
     function tripRowHtml(t) {
       const mine = bookingFor(s, t.id);
       const waiting = s.waitlistMine.some((w) => w.tripId === t.id && w.status === 'waiting');
@@ -594,7 +601,7 @@
       '</div>' +
       '<div class="grid g2">' +
         '<section class="card"><h3>رحلات الذهاب للجامعة</h3>' + (trips.filter((t) => t.direction === 'go').map(tripRowHtml).join('') || '<p class="mute">لا توجد رحلات ذهاب</p>') + '</section>' +
-        '<section class="card"><h3>رحلات العودة</h3>' + (trips.filter((t) => t.direction === 'back').map(tripRowHtml).join('') || '<p class="mute">لا توجد رحلات عودة</p>') + '</section>' +
+        '<section class="card"><h3>مواعيد العودة من الجامعة</h3><p class="mute" style="margin:0 0 8px">من غير حجز — الباصات واقفة وبتتحرك في المواعيد اللي بتحددها الإدارة.</p>' + (trips.filter((t) => t.direction === 'back').map(returnRowHtml).join('') || '<p class="mute">لا توجد رحلات عودة</p>') + '</section>' +
       '</div>' +
       '<div class="grid g2">' +
         '<section class="card"><h3>حجوزاتي المؤكدة</h3>' + (myRows || '<p class="mute">لا توجد حجوزات مؤكدة حالياً.</p>') + '</section>' +

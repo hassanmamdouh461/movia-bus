@@ -123,7 +123,6 @@
       me: { name: 'أحمد محمد', studentId: '20231547', plan: 'اشتراك شهري', balance: 350 },
       myBookings: [
         { id: 'k1', tripId: trips.find((t) => t.routeId === 'r1' && t.direction === 'go' && t.time === '07:00').id, seat: 12, status: 'confirmed' },
-        { id: 'k2', tripId: trips.find((t) => t.routeId === 'r1' && t.direction === 'back' && t.time === '15:30').id, seat: 9, status: 'confirmed' },
       ],
       waitlistMine: [],
       sharedLinks: [],
