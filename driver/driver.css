@@ -393,7 +393,13 @@ body {
   .drv-grid {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: 10px;
+  }
+
+  .drv-grid > .card,
+  .drv-grid .drv-col > .card {
+    width: 100%;
   }
 
   .drv-col {
