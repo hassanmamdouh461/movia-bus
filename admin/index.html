@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>إدارة Movia Bus</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="../shared/mb.css">
+<style>
+  body{padding-bottom:0}
+  .adm-shell{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;max-width:1280px;margin:0 auto;padding:16px;align-items:start}
+  .adm-nav{position:sticky;top:72px;display:flex;flex-direction:column;gap:4px}
+  .adm-nav a{padding:10px 12px;border-radius:10px;font-weight:600;font-size:14px;color:var(--ink);border:1px solid transparent}
+  .adm-nav a:hover{border-color:var(--line)}
+  .adm-nav a.on{background:var(--brand);color:#fff}
+  .adm-main{min-width:0}
+  .adm-main h2{font-size:20px;margin:4px 0 12px}
+  .adm-main h3{font-size:16px;margin:0 0 8px}
+  .head{margin-bottom:8px}
+  .toolbar input[type=date]{width:auto}
+  .tbl{overflow-x:auto}
+  .acts{white-space:nowrap}
+  .acts .btn{margin-inline-end:4px}
+  td input,td select{width:auto;min-width:110px;padding:6px 8px}
+  td input[type=time]{min-width:120px}
+  tr.rm td{opacity:.55;text-decoration:line-through}
+  .sos-item{background:var(--bad);color:#fff;border-radius:var(--r);padding:12px 14px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .sos-item .grow{min-width:200px}
+  .sos-item .btn{background:#fff;color:var(--bad)}
+  .sos-ok{color:var(--ok);font-size:14px;margin:0 0 10px;font-weight:600}
+  .scan-res{padding:12px 14px;border-radius:12px;margin-top:8px}
+  .scan-res.ok{background:#d3f9d8;color:#2b8a3e}
+  .scan-res.bad{background:#ffe3e3;color:#c92a2a}
+  .rule{margin-bottom:8px;flex-wrap:nowrap}
+  .rule input{flex:1}
+  .priv li{margin-bottom:8px}
+  .adm-busicon{background:none;border:0}
+  .adm-busicon .pin.bus{font-size:10px;width:34px;height:34px;padding:0;line-height:1}
+  .adm-note{font-size:13px;color:var(--mute);margin:8px 0 0}
+  .print-only{display:none}
+  @media print{
+    .topbar,.adm-nav,.adm-sos,.no-print,.toast{display:none!important}
+    .adm-shell{display:block;padding:0}
+    body{background:#fff;color:#000}
+    .card{border:0;box-shadow:none;break-inside:avoid}
+    th,td{color:#000}
+    .print-only{display:block}
+  }
+  @media (max-width:760px){
+    .adm-shell{grid-template-columns:1fr;padding:12px;gap:12px}
+    .adm-nav{position:sticky;top:60px;z-index:40;flex-direction:row;overflow-x:auto;background:var(--bg);padding:6px 0;gap:6px}
+    .adm-nav a{white-space:nowrap;flex:0 0 auto}
+    .topbar h1{font-size:15px}
+    .topbar .switch{display:none}
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>إدارة Movia Bus <span class="mute">· لوحة الإدارة</span></h1>
+  <span class="switch" id="clock">--:--:--</span>
+</header>
+
+<div class="adm-shell">
+  <nav class="adm-nav" id="nav" aria-label="أقسام الإدارة"></nav>
+  <main class="adm-main">
+    <section id="sos" aria-live="polite"></section>
+    <section id="view"></section>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="../shared/core.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

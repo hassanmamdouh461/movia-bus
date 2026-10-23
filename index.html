@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Movia Bus — نسخة العرض</title>
+<link rel="stylesheet" href="shared/mb.css">
+</head>
+<body>
+<div class="wrap" style="max-width:560px;padding-top:40px">
+  <h1 style="margin:0 0 4px">🚌 Movia Bus</h1>
+  <p class="mute">نظام إدارة وتتبع حافلات نقل الطلاب — نسخة العرض التجريبية (بيانات افتراضية)</p>
+  <a class="card" href="student/" style="display:block"><h2>🎓 الطالب</h2><span class="mute">تتبع الحافلة، الحجز، الإشعارات، SOS</span></a>
+  <a class="card" href="driver/" style="display:block"><h2>🧑‍✈️ السائق</h2><span class="mute">ابدأ/أنهِ الرحلة، خريطة الطلب، تخطي المحطات الفارغة</span></a>
+  <a class="card" href="admin/" style="display:block"><h2>🧭 الإدارة</h2><span class="mute">نشر الجدول، لوحة الطلب، المتابعة الحية، التقارير</span></a>
+  <p class="mute">افتح الواجهات في تبويبات منفصلة: أي تغيير يظهر فورًا في الباقي. <a href="#" id="reset" style="text-decoration:underline">إعادة ضبط البيانات</a></p>
+</div>
+<script src="shared/core.js"></script>
+<script>document.getElementById('reset').onclick=function(e){e.preventDefault();MB.reset();alert('تمت إعادة ضبط البيانات')}</script>
+</body>
+</html>

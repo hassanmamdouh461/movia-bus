@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Movia Bus - السائق</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="../shared/mb.css">
+<style>
+  [hidden]{display:none !important}
+  .topbar select{width:auto;max-width:58%;padding:8px 10px}
+  .status-row{align-items:center}
+  .chain{list-style:none;padding:0;margin:10px 0;display:flex;gap:6px;flex-wrap:wrap}
+  .chain li{flex:1;min-width:100px;text-align:center;padding:8px 6px;border-radius:10px;border:1px solid var(--line);font-size:13px;color:var(--mute)}
+  .chain li.done{background:#d3f9d8;color:#2b8a3e;border-color:transparent}
+  .chain li.cur{background:var(--brand);color:#fff;font-weight:700;border-color:transparent}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ok);margin-inline-end:6px;animation:pulse 1.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,158,68,.6)}70%{box-shadow:0 0 0 10px rgba(47,158,68,0)}100%{box-shadow:0 0 0 0 rgba(47,158,68,0)}}
+  .mb-icon{background:none;border:0}
+  .pin.bus.lbl{width:auto;height:auto;padding:4px 10px;font-size:13px;white-space:nowrap}
+  .row-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .row-item:last-child{border-bottom:0}
+  .chat{max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+  .msg{max-width:85%;padding:8px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--line);word-break:break-word}
+  .msg.me{align-self:flex-start;border-color:var(--brand)}
+  .msg.them{align-self:flex-end}
+  .quick{margin-bottom:10px}
+  .quick .btn{flex:1 1 45%}
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  .actions .btn.big{padding:22px 10px}
+  .toast{text-align:center}
+  @media (max-width:480px){ .wrap{padding:12px 16px} }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>Movia Bus · السائق</h1>
+  <select id="driverSel" aria-label="اختيار السائق"></select>
+</header>
+
+<main class="wrap">
+
+  <section class="card" aria-live="polite">
+    <div class="row status-row">
+      <span class="badge" id="statusBadge">—</span>
+      <span class="grow"></span>
+      <span class="badge ok" id="autoBadge" hidden><span class="dot"></span>البث التلقائي يعمل</span>
+    </div>
+    <h2 id="tripTitle" style="margin-top:10px">جاري التحميل…</h2>
+    <p class="mute" id="tripMeta"></p>
+    <ol class="chain" id="chain"></ol>
+    <p class="mute" id="etaLine"></p>
+
+    <div class="actions">
+      <button class="btn big ok" id="btnStart">ابدأ الرحلة</button>
+      <button class="btn big bad" id="btnEnd">أنهِ الرحلة</button>
+    </div>
+    <p class="mute" id="hint" style="margin-top:10px"></p>
+  </section>
+
+  <div class="map" id="map" role="region" aria-label="خريطة الخط"></div>
+
+  <section class="card">
+    <h3>الطلب على المحطات</h3>
+    <p class="mute">عدد الطلاب المنتظرين في كل محطة (أعداد فقط)</p>
+    <div id="demandList"></div>
+  </section>
+
+  <section class="card">
+    <h3>وفّر وقتك</h3>
+    <p class="mute">المحطات القادمة اللي مفيهاش حد منتظر</p>
+    <div id="saveList"></div>
+  </section>
+
+  <section class="card">
+    <h3>محادثة الرحلة</h3>
+    <div class="chat" id="chatList"></div>
+    <div class="row quick" id="quick"></div>
+    <div class="row">
+      <input id="chatIn" class="grow" type="text" maxlength="200" placeholder="اكتب ردك…" aria-label="اكتب ردك">
+      <button class="btn" id="chatSend">إرسال</button>
+    </div>
+  </section>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="../shared/core.js"></script>
+<script src="driver.js"></script>
+</body>
+</html>
