@@ -6,7 +6,7 @@
    those anonymous pins live as mandatory stops (status 'accepted' from the start). The driver can't skip: the bus
    always pauses at each pickup for a few seconds (boarding) and then continues. */
 (function () {
-  const KEY = 'movia_state_v3';
+  const KEY = 'movia_state_v4';
   const TRIP_MS = 8 * 60 * 1000;   // a full trip takes 8 real minutes in the demo
   const BOARD_MS = 8 * 1000;       // how long the bus waits at an accepted pickup
 
@@ -117,10 +117,10 @@
   function seed() {
     const trips = seedTrips();
     return {
-      v: 3,
+      v: 4,
       trips,
       pickups: seedPickups(trips),
-      me: { name: 'أحمد محمد', studentId: '20231547', plan: 'اشتراك شهري', balance: 350 },
+      me: { name: 'أحمد محمد', studentId: '20231547' },
       myBookings: [
         { id: 'k1', tripId: trips.find((t) => t.routeId === 'r1' && t.direction === 'go' && t.time === '07:00').id, seat: 12, status: 'confirmed' },
       ],
@@ -137,18 +137,13 @@
       ],
       ratings: [ { tripId: 't1', driverId: 'd1', stars: 5 }, { tripId: 't2', driverId: 'd2', stars: 4 } ],
       chat: [],
-      subscribers: [
-        { id: 'u1', name: 'أحمد محمد',   studentId: '20231547', plan: 'شهري',  balance: 350, status: 'active', expires: '2026-11-20', scanned: true },
-        { id: 'u2', name: 'سارة علي',    studentId: '20231622', plan: 'ترم',   balance: 0,   status: 'active', expires: '2027-01-30', scanned: true },
-        { id: 'u3', name: 'كريم حسن',    studentId: '20230988', plan: 'شهري',  balance: 80,  status: 'expired', expires: '2026-10-01', scanned: false },
-        { id: 'u4', name: 'منى إبراهيم', studentId: '20241205', plan: 'أسبوعي', balance: 40,  status: 'active', expires: '2026-10-28', scanned: true },
-        { id: 'u5', name: 'عمر خالد',    studentId: '20232390', plan: 'ترم',   balance: 600, status: 'active', expires: '2027-01-30', scanned: false },
-        { id: 'u6', name: 'ياسمين طارق', studentId: '20241777', plan: 'شهري',  balance: 15,  status: 'active', expires: '2026-11-12', scanned: true },
-      ],
-      payments: [
-        { id: 'pay1', ts: Date.now() - 3600000, student: 'أحمد محمد', amount: 450, method: 'بطاقة', plan: 'شهري' },
-        { id: 'pay2', ts: Date.now() - 7200000, student: 'سارة علي', amount: 1200, method: 'محفظة', plan: 'ترم' },
-        { id: 'pay3', ts: Date.now() - 1800000, student: 'منى إبراهيم', amount: 150, method: 'بطاقة', plan: 'أسبوعي' },
+      students: [
+        { id: 'u1', name: 'أحمد محمد',   studentId: '20231547', status: 'active',   scanned: true },
+        { id: 'u2', name: 'سارة علي',    studentId: '20231622', status: 'active',   scanned: true },
+        { id: 'u3', name: 'كريم حسن',    studentId: '20230988', status: 'inactive', scanned: false },
+        { id: 'u4', name: 'منى إبراهيم', studentId: '20241205', status: 'active',   scanned: true },
+        { id: 'u5', name: 'عمر خالد',    studentId: '20232390', status: 'active',   scanned: false },
+        { id: 'u6', name: 'ياسمين طارق', studentId: '20241777', status: 'active',   scanned: true },
       ],
       policies: {
         lastReturn: '19:30',
@@ -164,7 +159,7 @@
   let state = null;
   const subs = new Set();
   function load() {
-    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 3) return s; } catch (e) {}
+    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 4) return s; } catch (e) {}
     return null;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }

@@ -12,7 +12,6 @@
   const at = (day, hm) => new Date(day + 'T' + hm + ':00').getTime();
   const hhmm = (ts) => { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
   const hhmmss = (ts) => { const d = new Date(ts); return hhmm(ts) + ':' + pad(d.getSeconds()); };
-  const addDays = (key, n) => { const d = new Date(key + 'T12:00:00'); d.setDate(d.getDate() + n); return dayKey(d.getTime()); };
   const dirLabel = (d) => (d === 'go' ? 'ذهاب' : 'عودة');
   const lineLabel = (r) => (r && r.fromName && r.toName ? r.fromName + ' → ' + r.toName : r ? r.name : '—');
   const routeName = (id) => lineLabel(MB.R[id]);
@@ -26,7 +25,6 @@
   const tripsToday = () => dayTrips(todayKey());
   const fillPct = (t) => (t.capacity ? Math.round((t.booked / t.capacity) * 100) : 0);
   const canChange = (t) => t.status === 'scheduled' || t.status === 'at_start';
-  const isActiveSub = (x) => x.status === 'active' && x.expires >= todayKey();
   const STATUS_CLS = { scheduled: 'info', at_start: 'warn', en_route: 'ok', arrived: '', cancelled: 'bad' };
   const badgeStatus = (t) => '<span class="badge ' + (STATUS_CLS[t.status] || '') + '">' + esc(MB.statusLabel[t.status] || t.status) + '</span>' + (t.published === false ? ' <span class="badge warn">مسودة</span>' : '');
   const kpi = (label, value) => '<div class="card"><div class="mute">' + esc(label) + '</div><div class="kpi">' + esc(value) + '</div></div>';
@@ -429,54 +427,6 @@
     }
   }
 
-  // ---------- 3.5 subscriptions & collection ----------
-  const PLANS = { 'أسبوعي': { amt: 150, days: 7 }, 'شهري': { amt: 450, days: 30 }, 'ترم': { amt: 1200, days: 120 } };
-
-  function openRenew(id) {
-    const x = MB.state.subscribers.find((u) => u.id === id);
-    if (!x) return;
-    const plan = PLANS[x.plan] ? x.plan : 'شهري';
-    const opts = Object.keys(PLANS).map((k) => '<option value="' + k + '" ' + (k === plan ? 'selected' : '') + '>' + k + ' · ' + PLANS[k].amt + ' ج.م · ' + PLANS[k].days + ' يوم</option>').join('');
-    openModal('تجديد اشتراك ' + x.name, '<label>الخطة</label><select name="plan">' + opts + '</select>' +
-      '<label>طريقة الدفع (محاكاة)</label><select name="method"><option value="بطاقة">بطاقة</option><option value="محفظة">محفظة</option></select>' +
-      '<p class="adm-note">الدفع تجريبي ولا يُخصم أي مبلغ حقيقي.</p>',
-      (data) => {
-        const p = PLANS[data.plan];
-        if (!p) return 'اختر خطة صحيحة';
-        const cur0 = MB.state.subscribers.find((u) => u.id === id);
-        if (!cur0) return 'المشترك غير موجود';
-        const base = isActiveSub(cur0) ? cur0.expires : todayKey();
-        const exp = addDays(base, p.days);
-        MB.update((s) => {
-          const y = s.subscribers.find((u) => u.id === id);
-          y.plan = data.plan;
-          y.expires = exp;
-          y.status = 'active';
-          s.payments.push({ id: 'pay' + Date.now(), ts: Date.now(), student: y.name, amount: p.amt, method: data.method, plan: data.plan });
-        });
-        toast('تم التجديد حتى ' + exp + ' (' + p.amt + ' ج.م، محاكاة)');
-        return '';
-      }, 'تأكيد التجديد');
-  }
-
-  function renderSubs() {
-    const s = MB.state;
-    const subs = s.subscribers;
-    const active = subs.filter(isActiveSub).length;
-    const collected = s.payments.reduce((a, p) => a + p.amount, 0);
-    const electronic = s.payments.filter((p) => p.method === 'بطاقة' || p.method === 'محفظة').reduce((a, p) => a + p.amount, 0);
-    const wallets = subs.reduce((a, x) => a + x.balance, 0);
-    const rows = subs.map((x) => '<tr><td>' + esc(x.name) + '<br><span class="mute">' + esc(x.studentId) + '</span></td><td>' + esc(x.plan) + '</td><td>' + x.balance + ' ج.م</td>' +
-      '<td>' + (isActiveSub(x) ? '<span class="badge ok">نشط</span>' : '<span class="badge bad">منتهٍ</span>') + '</td><td>' + esc(x.expires) + '</td>' +
-      '<td><button class="btn sm" data-act="subRenew" data-id="' + esc(x.id) + '">تجديد</button></td></tr>').join('');
-    const pays = s.payments.slice().sort((a, b) => b.ts - a.ts).slice(0, 50).map((p) =>
-      '<tr><td>' + dayKey(p.ts) + ' <span class="mute">' + hhmm(p.ts) + '</span></td><td>' + esc(p.student) + '</td><td>' + esc(p.plan) + '</td><td>' + p.amount + ' ج.م</td><td>' + esc(p.method) + '</td></tr>').join('');
-    return head('الاشتراكات والتحصيل', '') +
-      '<div class="grid g4">' + kpi('مشتركون نشطون', active) + kpi('منتهو الاشتراك', subs.length - active) + kpi('إجمالي التحصيل', collected + ' ج.م') + kpi('الدفع الإلكتروني (محاكاة)', electronic + ' ج.م') + '</div>' +
-      '<div class="card" style="margin-top:12px"><h3>المشتركون</h3>' + table(['المشترك', 'الخطة', 'الرصيد', 'الحالة', 'ينتهي', ''], rows) + '<p class="adm-note">أرصدة المحافظ الإجمالية: ' + wallets + ' ج.م</p></div>' +
-      '<div class="card"><h3>المدفوعات</h3>' + (s.payments.length ? table(['الوقت', 'الطالب', 'الخطة', 'المبلغ', 'الطريقة'], pays) : empty('لا توجد مدفوعات بعد.')) + '</div>';
-  }
-
   // ---------- 3.6 reports ----------
   function reportData(kind) {
     const trips = MB.state.trips;
@@ -561,14 +511,14 @@
       (list.length ? table(['التاريخ', 'الطالب', 'الفئة', 'نص الشكوى', 'الحالة', 'المسؤول', 'إجراء'], rows) : empty('لا توجد شكاوى في هذه الفئة.')) + '</div>';
   }
 
-  // ---------- 3.8 QR access ----------
+  // ---------- 3.8 QR boarding (تسجيل الركوب) ----------
   function validateScan(raw) {
     const id = String(raw || '').trim();
     if (!id) return { ok: false, name: '—', reason: 'أدخل الرقم الجامعي أو امسح البطاقة' };
-    const sub = MB.state.subscribers.find((x) => x.studentId === id);
-    if (!sub) return { ok: false, name: '—', reason: 'الهوية غير مسجلة في النظام' };
-    if (sub.status !== 'active' || sub.expires < todayKey()) return { ok: false, name: sub.name, reason: 'الاشتراك منتهي الصلاحية (انتهى ' + sub.expires + ')' };
-    return { ok: true, name: sub.name, reason: sub.scanned ? 'صالح (سبق تسجيل مسحه)' : 'صالح' };
+    const st = MB.state.students.find((x) => x.studentId === id);
+    if (!st) return { ok: false, name: '—', reason: 'الرقم الجامعي غير مسجّل' };
+    if (st.status !== 'active') return { ok: false, name: st.name, reason: 'الطالب غير مفعّل' };
+    return { ok: true, name: st.name, reason: st.scanned ? 'صالح (سبق تسجيل مسحه)' : 'صالح' };
   }
 
   function doScan(raw) {
@@ -578,8 +528,8 @@
     lastScan = entry;
     MB.update((s) => {
       if (r.ok) {
-        const sub = s.subscribers.find((x) => x.studentId === id);
-        if (sub) sub.scanned = true;
+        const st = s.students.find((x) => x.studentId === id);
+        if (st) st.scanned = true;
       }
       s.scanLog = s.scanLog || [];
       s.scanLog.unshift(entry);
@@ -589,17 +539,18 @@
   }
 
   function renderQr() {
-    const subs = MB.state.subscribers;
-    const scanned = subs.filter((x) => x.scanned).length;
+    const list = MB.state.students || [];
+    const scanned = list.filter((x) => x.scanned).length;
+    const activeN = list.filter((x) => x.status === 'active').length;
     const res = lastScan
       ? '<div class="scan-res ' + (lastScan.ok ? 'ok' : 'bad') + '"><b>' + (lastScan.ok ? 'مقبول' : 'مرفوض') + '</b> · ' + esc(lastScan.name) + ' — ' + esc(lastScan.reason) + '</div>'
       : empty('لم يتم أي مسح بعد.');
     const log = (MB.state.scanLog || []).slice(0, 15).map((e) => '<tr><td>' + hhmmss(e.ts) + '</td><td>' + esc(e.name) + '</td><td>' + esc(e.studentId) + '</td><td>' + (e.ok ? '<span class="badge ok">مقبول</span>' : '<span class="badge bad">مرفوض</span>') + ' ' + esc(e.reason) + '</td></tr>').join('');
-    const subRows = subs.map((x) => '<tr><td>' + esc(x.name) + '</td><td>' + esc(x.studentId) + '</td><td>' + esc(x.plan) + '</td><td>' + esc(x.expires) + '</td>' +
-      '<td>' + (isActiveSub(x) ? '<span class="badge ok">نشط</span>' : '<span class="badge bad">منتهٍ</span>') + '</td>' +
-      '<td>' + (x.scanned ? '<span class="badge ok">تم المسح</span>' : '<span class="badge warn">لم يُمسح</span>') + '</td></tr>').join('');
-    return head('مسح QR للدخول', '') +
-      '<div class="grid g4">' + kpi('المشتركون', subs.length) + kpi('تم مسحهم', scanned) + kpi('لم يُمسحوا', subs.length - scanned) + '</div>' +
+    const rows = list.map((x) => '<tr><td>' + esc(x.name) + '</td><td>' + esc(x.studentId) + '</td>' +
+      '<td>' + (x.status === 'active' ? '<span class="badge ok">مفعّل</span>' : '<span class="badge bad">غير مفعّل</span>') + '</td>' +
+      '<td>' + (x.scanned ? '<span class="badge ok">نعم</span>' : '<span class="badge warn">لا</span>') + '</td></tr>').join('');
+    return head('تسجيل الركوب (QR)', '') +
+      '<div class="grid g4">' + kpi('الطلاب المسجّلون', list.length) + kpi('مفعّلون', activeN) + kpi('تم مسحهم اليوم', scanned) + kpi('لم يُمسحوا', list.length - scanned) + '</div>' +
       '<div class="grid g2" style="margin-top:12px">' +
       '<div class="card"><h3>محاكاة المسح</h3><label for="qrId">الرقم الجامعي</label>' +
       '<div class="row"><input id="qrId" class="grow" placeholder="مثال: 20231547" inputmode="numeric"></div>' +
@@ -607,7 +558,7 @@
       '<div style="margin-top:12px">' + res + '</div></div>' +
       '<div class="card"><h3>سجل المسح</h3>' + (log ? table(['الوقت', 'الطالب', 'الرقم الجامعي', 'النتيجة'], log) : empty('السجل فارغ.')) + '</div>' +
       '</div>' +
-      '<div class="card" style="margin-top:12px"><h3>حالة المشتركين</h3>' + table(['الاسم', 'الرقم الجامعي', 'الخطة', 'ينتهي', 'الاشتراك', 'QR'], subRows) + '</div>';
+      '<div class="card" style="margin-top:12px"><h3>الطلاب المسجّلون</h3>' + table(['الاسم', 'الرقم الجامعي', 'الحالة', 'تم المسح اليوم'], rows) + '</div>';
   }
 
   // ---------- 3.10 policies ----------
@@ -630,7 +581,7 @@
       '<li>السائق يرى <b>مواقع طلبات الركوب</b> المجهولة على مساره فقط، ولا يرى أسماء الطلاب أو أرقام هواتفهم.</li>' +
       '<li>لا تُعرض <b>أرقام هواتف الطلاب</b> في أي شاشة من لوحة الإدارة أو في التقارير المصدّرة.</li>' +
       '<li>التقارير المصدّرة تحتوي على أعداد وإحصائيات مجمّعة (ركاب الخطوط، الالتزام بالمواعيد، تقييمات السائقين).</li>' +
-      '<li>الرقم الجامعي في سجل المسح يُستخدم للتحقق من صلاحية الاشتراك فقط، ولا يُشارك مع أي طرف آخر.</li>' +
+      '<li>الرقم الجامعي في سجل المسح يُستخدم للتحقق من تفعيل الطالب فقط، ولا يُشارك مع أي طرف آخر.</li>' +
       '<li>شكاوى الطلاب تُعرض للإدارة فقط.</li>' +
       '</ul></div>';
   }
@@ -650,12 +601,13 @@
     const cap = live.reduce((a, t) => a + t.capacity, 0);
     const occ = cap ? Math.round((riders / cap) * 100) : 0;
     const active = s.trips.filter((t) => t.status === 'en_route').length;
-    const revenue = (s.payments || []).filter((p) => dayKey(p.ts) === today).reduce((a, p) => a + (+p.amount || 0), 0);
+    const todayIds = new Set(live.map((t) => t.id));
+    const readyActive = (s.pickups || []).filter((k) => todayIds.has(k.tripId) && (k.status === 'accepted' || k.status === 'boarding')).length;
     el.innerHTML = [
       kpiCard('ok', 'رحلات نشطة', active, 'حافلات في الطريق الآن'),
       kpiCard('info', 'ركاب اليوم', riders, 'حجوزات رحلات اليوم'),
       kpiCard('warn', 'نسبة الإشغال', occ + '%', 'من إجمالي المقاعد اليوم'),
-      kpiCard('brand', 'الإيراد', revenue + ' ج.م', 'مدفوعات اليوم (محاكاة)'),
+      kpiCard('brand', 'طلبات Ready النشطة', readyActive, 'طلبات ركوب مقبولة لرحلات اليوم'),
     ].join('');
   }
 
@@ -690,7 +642,7 @@
     monitor: { label: 'المتابعة الحية للأسطول', render: renderMonitor },
     publish: { label: 'جدول اليوم والرحلات', render: () => renderPublish() + '<div style="margin-top:18px">' + renderTrips() + '</div>' },
     demand: { label: 'لوحة الطلب المباشر', render: renderDemand },
-    subs: { label: 'الاشتراكات وحماية الدخل', render: () => renderSubs() + '<div style="margin-top:18px">' + renderQr() + '</div>' },
+    qr: { label: 'تسجيل الركوب (QR)', render: renderQr },
     complaints: { label: 'البلاغات والسياسات', render: () => renderComplaints() + '<div style="margin-top:18px">' + renderPolicies() + '</div><div style="margin-top:18px">' + renderPrivacy() + '</div>' },
     reports: { label: 'التقارير والتصدير', render: renderReports },
   };
@@ -734,7 +686,6 @@
     demCancel: ({ id }) => cancelTrip(id),
     demMerge: ({ id }) => mergeTrip(id),
     demAddBus: ({ id }) => addBusShortcut(id),
-    subRenew: ({ id }) => openRenew(id),
     rep: ({ kind }) => {
       const d = reportData(kind);
       downloadCsv(d.name + '-' + todayKey() + '.csv', toCsv(d.head, d.rows));
@@ -747,9 +698,9 @@
     }),
     qrScan: () => doScan($('#qrId') ? $('#qrId').value : ''),
     qrRandom: () => {
-      const subs = MB.state.subscribers;
-      if (!subs.length) return toast('لا يوجد مشتركون', true);
-      doScan(subs[Math.floor(Math.random() * subs.length)].studentId);
+      const list = MB.state.students;
+      if (!list.length) return toast('لا يوجد طلاب مسجّلون', true);
+      doScan(list[Math.floor(Math.random() * list.length)].studentId);
     },
     polDel: ({ i }) => { polDraft.rules.splice(+i, 1); renderView(); },
     polAdd: () => { polDraft.rules.push(''); renderView(); const inputs = document.querySelectorAll('[data-inp="pol"]'); if (inputs.length) inputs[inputs.length - 1].focus(); },
