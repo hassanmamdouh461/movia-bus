@@ -365,7 +365,7 @@
       el.innerHTML = '<p class="mute" style="padding:16px">تعذّر تحميل الخريطة. تحقق من الاتصال بالإنترنت، وما زالت الجداول تعمل.</p>';
       return;
     }
-    map = L.map(el).setView([30.03, 31.27], 12);
+    map = L.map(el).setView([28.11, 30.80], 12);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
     const pts = [];
     (MB.routes || []).forEach((r) => {

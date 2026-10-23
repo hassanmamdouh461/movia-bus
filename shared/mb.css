@@ -450,3 +450,8 @@ tbody tr:hover td {
 .pin.crowd {
   background: #1e40af;
 }
+
+/* long Arabic route names / select options must never widen the page on phones */
+select,input,textarea{max-width:100%;min-width:0;text-overflow:ellipsis}
+.wrap,.wrap>*,.card,.grid>*,.row>*{min-width:0}
+h1,h2,h3,strong{overflow-wrap:anywhere}

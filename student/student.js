@@ -735,7 +735,7 @@
     const route = MB.R[t.routeId];
     const poly = MB.polyOf(t);
     const ends = endNames(t);
-    const map = L.map(el, { scrollWheelZoom: false }).setView([30.04, 31.25], 12);
+    const map = L.map(el, { scrollWheelZoom: false }).setView([28.11, 30.80], 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
     el.classList.toggle('picking', draft.pickMode === tid);
     const line = L.polyline(poly, { color: route.color, weight: 5, opacity: 0.9 }).addTo(map);

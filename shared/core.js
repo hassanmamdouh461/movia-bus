@@ -10,44 +10,16 @@
   const TRIP_MS = 8 * 60 * 1000;   // a full trip takes 8 real minutes in the demo
   const BOARD_MS = 8 * 1000;       // how long the bus waits at an accepted pickup
 
-  // waypoints only shape the paths — they are NOT stations and are never shown as stops
-  const way = {
-    w1: { name: 'البوابة الرئيسية للجامعة', lat: 30.0780, lng: 31.2850 },
-    w2: { name: 'الجيزة',                    lat: 30.0131, lng: 31.2089 },
-    w3: { name: 'وسط البلد',                 lat: 30.0444, lng: 31.2357 },
-    w4: { name: 'الهرم',                     lat: 29.9870, lng: 31.1760 },
-    w5: { name: 'مدينة نصر',                 lat: 30.0626, lng: 31.3300 },
-    w6: { name: 'التجمع',                    lat: 30.0300, lng: 31.4300 },
-    w7: { name: 'المعادي',                   lat: 29.9602, lng: 31.2569 },
-    w8: { name: 'حدائق الأهرام',             lat: 29.9950, lng: 31.1300 },
-  };
-  const routeDefs = [
-    { id: 'r1', name: 'خط الجيزة',  color: '#165b40', path: ['w1', 'w3', 'w2', 'w4', 'w8'] },
-    { id: 'r2', name: 'خط التجمع',  color: '#1e40af', path: ['w1', 'w5', 'w6'] },
-    { id: 'r3', name: 'خط المعادي', color: '#b45309', path: ['w1', 'w3', 'w7'] },
+  // Real street paths (Lotus University lines), generated once from the route waypoints via OSRM.
+  // The first point is where the line starts; the last point is the university. There are no stations.
+  const UNIVERSITY = 'جامعة اللوتس';
+  const routes = [
+    { id: 'r1', name: 'خط وسط المدينة والكورنيش', color: '#165b40', minutes: 35,
+      fromName: 'طريق تله', toName: UNIVERSITY, polyline: [[28.0885,30.7537],[28.0887,30.7551],[28.0889,30.7559],[28.0883,30.7561],[28.0906,30.7557],[28.0923,30.7553],[28.0932,30.7548],[28.0955,30.7532],[28.0957,30.7534],[28.0934,30.7548],[28.094,30.7561],[28.0926,30.7569],[28.0923,30.7571],[28.0928,30.7572],[28.0933,30.7572],[28.094,30.758],[28.0947,30.7591],[28.0951,30.7598],[28.0953,30.7603],[28.0955,30.7607],[28.096,30.7615],[28.0948,30.7631],[28.0934,30.764],[28.0919,30.7647],[28.0912,30.7647],[28.0908,30.7648],[28.0907,30.7653],[28.091,30.7655],[28.092,30.7678],[28.0928,30.77],[28.0961,30.7785],[28.0967,30.78],[28.0969,30.7801],[28.0972,30.7798],[28.1023,30.7765],[28.1056,30.7744],[28.1095,30.772],[28.1109,30.7714],[28.1133,30.7704],[28.1149,30.7699],[28.1161,30.7695],[28.1166,30.7696],[28.117,30.77],[28.1173,30.7705],[28.1173,30.771],[28.1168,30.7718],[28.1154,30.773],[28.1148,30.7736],[28.1136,30.7747],[28.1101,30.7776],[28.1082,30.779],[28.1059,30.7805],[28.1031,30.7826],[28.1015,30.7852],[28.1012,30.787],[28.1002,30.7927],[28.0993,30.7991],[28.098,30.8086],[28.0973,30.8118],[28.0966,30.8136],[28.0961,30.8143],[28.0903,30.821],[28.0879,30.8237],[28.0846,30.8274],[28.0834,30.829],[28.0835,30.8307],[28.0872,30.8334],[28.0905,30.8355],[28.0941,30.8373],[28.0978,30.8387],[28.1002,30.8395],[28.1012,30.8402],[28.1056,30.8448],[28.1074,30.8465],[28.1088,30.847],[28.1135,30.8471],[28.117,30.8471],[28.1278,30.8474],[28.126,30.8469]] },
+    { id: 'r4', name: 'خط شلبي', color: '#1e40af', minutes: 38,
+      fromName: 'شلبي', toName: UNIVERSITY, polyline: [[28.118,30.7435],[28.1151,30.7447],[28.1145,30.745],[28.1149,30.7449],[28.1171,30.7442],[28.1176,30.7444],[28.1176,30.7448],[28.1161,30.7455],[28.1147,30.7461],[28.1146,30.7465],[28.1145,30.7477],[28.1141,30.7499],[28.1111,30.7515],[28.1078,30.7531],[28.1046,30.7547],[28.1033,30.7556],[28.1026,30.7561],[28.1023,30.7565],[28.1017,30.7572],[28.0998,30.7586],[28.0995,30.7588],[28.0968,30.7614],[28.0949,30.7632],[28.0933,30.7641],[28.0916,30.7647],[28.0911,30.7648],[28.0908,30.7648],[28.0908,30.7653],[28.0911,30.7656],[28.0923,30.7685],[28.0939,30.7728],[28.0964,30.7792],[28.0967,30.78],[28.0969,30.7801],[28.0976,30.7795],[28.1027,30.7762],[28.1067,30.7737],[28.1099,30.7719],[28.1113,30.7713],[28.1134,30.7704],[28.115,30.7698],[28.1163,30.7695],[28.1166,30.7696],[28.1171,30.7701],[28.1173,30.7706],[28.1173,30.7711],[28.1167,30.772],[28.1154,30.7731],[28.1148,30.7736],[28.1132,30.775],[28.1097,30.7779],[28.1078,30.7793],[28.1049,30.7813],[28.1026,30.7831],[28.1014,30.7856],[28.101,30.7877],[28.1,30.7939],[28.0991,30.8001],[28.0978,30.8099],[28.0973,30.8121],[28.0965,30.8137],[28.0954,30.8151],[28.0902,30.8211],[28.0875,30.8242],[28.0845,30.8275],[28.0833,30.8292],[28.0837,30.831],[28.0887,30.8344],[28.0912,30.8358],[28.0945,30.8375],[28.0989,30.839],[28.1005,30.8396],[28.1013,30.8404],[28.1062,30.8454],[28.1076,30.8466],[28.1091,30.8471],[28.1139,30.8471],[28.1178,30.8471],[28.1281,30.8473],[28.126,30.8469]] },
   ];
   const byId = (arr) => Object.fromEntries(arr.map((x) => [x.id, x]));
-
-  function buildPolyline(path) {
-    const pts = [];
-    for (let i = 0; i < path.length - 1; i++) {
-      const a = way[path[i]], b = way[path[i + 1]];
-      const steps = 14;
-      for (let k = 0; k < steps; k++) {
-        const t = k / steps;
-        const bend = Math.sin(t * Math.PI * 3) * 0.0035;
-        pts.push([a.lat + (b.lat - a.lat) * t + bend, a.lng + (b.lng - a.lng) * t - bend]);
-      }
-    }
-    const last = way[path[path.length - 1]];
-    pts.push([last.lat, last.lng]);
-    return pts;
-  }
-  const routes = routeDefs.map((r) => ({
-    id: r.id, name: r.name, color: r.color,
-    fromName: way[r.path[0]].name, toName: way[r.path[r.path.length - 1]].name,
-    polyline: buildPolyline(r.path),
-  }));
   const R = byId(routes);
 
   const drivers = [
@@ -89,7 +61,7 @@
       if (d < best.d) best = { d, i, t, px, py };
     }
     const progress = (best.i + best.t) / (poly.length - 1);
-    const mLat = 111000, mLng = 96000;
+    const mLat = 111000, mLng = 98000;
     const distM = Math.sqrt(Math.pow((best.py - lat) * mLat, 2) + Math.pow((best.px - lng) * mLng, 2));
     return { progress, lat: best.py, lng: best.px, distM };
   }
@@ -116,8 +88,8 @@
       });
     });
     const live = trips.filter((t) => t.routeId === 'r1' && t.direction === 'go').slice(0, 1)
-      .concat(trips.filter((t) => t.routeId === 'r2' && t.direction === 'go').slice(0, 1))
-      .concat(trips.filter((t) => t.routeId === 'r3' && t.direction === 'back').slice(0, 1));
+      .concat(trips.filter((t) => t.routeId === 'r4' && t.direction === 'go').slice(0, 1))
+      .concat(trips.filter((t) => t.routeId === 'r1' && t.direction === 'back').slice(1, 2));
     live.forEach((t, i) => { t.status = 'en_route'; t.startedAt = Date.now() - (1.2 + i * 1.8) * 60 * 1000; });
     const atStartTrip = trips.find((t) => t.routeId === 'r1' && t.status === 'scheduled');
     if (atStartTrip) atStartTrip.status = 'at_start';
@@ -157,7 +129,7 @@
       sharedLinks: [],
       notifications: [
         { id: 'n1', ts: Date.now() - 600000, text: 'الحافلة اقتربت منك', read: false, kind: 'bus' },
-        { id: 'n2', ts: Date.now() - 3600000, text: 'تم تأكيد حجز رحلة خط الجيزة 07:00', read: true, kind: 'booking' },
+        { id: 'n2', ts: Date.now() - 3600000, text: 'تم تأكيد حجز رحلة خط وسط المدينة والكورنيش 07:00', read: true, kind: 'booking' },
       ],
       reports: [
         { id: 'p1', ts: Date.now() - 86400000, studentName: 'سارة علي',   category: 'تأخير',      text: 'الحافلة تأخرت 20 دقيقة عن الموعد.', status: 'open', assignee: '' },
@@ -225,12 +197,12 @@
       const p = progressOf(trip), [lat, lng] = lerpAlong(polyOf(trip), p);
       return { lat, lng, progress: p, paused: !!trip.pauseStart };
     },
-    /** minutes until the bus reaches progress `p` on this trip (demo-scaled x3), null if passed / not running */
+    /** minutes until the bus reaches progress `p` on this trip (route minutes x remaining fraction), null if passed / not running */
     etaToProgress(trip, p) {
       if (trip.status !== 'en_route') return null;
       const rem = p - progressOf(trip);
       if (rem < -0.005) return null;
-      return Math.max(1, Math.round(Math.max(0, rem) * (TRIP_MS / 60000) * 3));
+      return Math.max(1, Math.round(Math.max(0, rem) * (R[trip.routeId].minutes || 30)));
     },
     etaToPickup(trip, pk) { return this.etaToProgress(trip, pk.progress); },
     /** pickups of a trip, optionally only active ones (waiting/accepted/boarding) */

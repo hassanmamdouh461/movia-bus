@@ -102,7 +102,7 @@
 
   function initMap() {
     if (typeof L === 'undefined') return;
-    map = L.map('map', { zoomControl: true, scrollWheelZoom: false }).setView([30.04, 31.27], 12);
+    map = L.map('map', { zoomControl: true, scrollWheelZoom: false }).setView([28.11, 30.80], 12);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap',
