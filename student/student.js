@@ -9,12 +9,16 @@
   const KIND_LABEL = { bus: 'اقتراب', driver: 'السائق', cancel: 'إلغاء', booking: 'حجز', waitlist: 'انتظار', info: 'عام' };
   const KIND_CLS = { bus: 'info', driver: 'ok', cancel: 'bad', booking: 'ok', waitlist: 'warn', info: '' };
   const BOOK_STATUS = { confirmed: 'مؤكد', cancelled: 'ملغي', missed: 'فاتتك الرحلة', trip_cancelled: 'الرحلة اتلغت' };
-  const VIEWS = ['home', 'book', 'map', 'alerts', 'support'];
+  const VIEWS = ['home', 'book', 'chat', 'map', 'alerts', 'support'];
+  const QUICK_REPLIES = ['أنا على المحطة', 'هتأخر دقيقة', 'أنا شايفك'];
 
   // UI drafts live outside state so re-renders do not wipe what the user is typing
   const draft = { route: 'r1', ready: {}, chat: {}, rate: {}, report: { cat: REPORT_CATS[0], trip: '', text: '' }, mapTrip: null };
-  let mapCtl = null; // { key, tripId, map, bus }
+  let mapCtl = null; // { key, tripId, map, bus, line, home }
   let pending = false;
+  let chatCtl = null; // key of the chat screen currently mounted
+  let chatForceScroll = false;
+  let sheetMin = false; // collapsed state of the home bottom sheet
 
   // ---------- helpers ----------
   function esc(v) {
@@ -24,13 +28,24 @@
   function uid(p) { return p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function trip(id) { return id ? MB.trip(id) : undefined; }
   function label(t) { return MB.tripLabel(t); }
+  function routeDir(t) { return MB.R[t.routeId].name + ' · ' + (t.direction === 'go' ? 'ذهاب' : 'عودة'); }
   function stName(id) { return MB.S[id] ? MB.S[id].name : '—'; }
+  function firstName(full) { return String(full || '').split(' ')[0]; }
+  function drvFirst(t) { const d = MB.drv[t.driverId]; return d ? String(d.name).replace(/^أ\.\s*/, '').split(' ')[0] : 'السواق'; }
+  function drvInitial(t) { const d = MB.drv[t.driverId]; const n = d ? String(d.name).replace(/^أ\.\s*/, '') : ''; return n.charAt(0) || '؟'; }
   function seatsLeft(t) { return Math.max(0, t.capacity - t.booked); }
   function minsUntil(t) { return (t.scheduledAt - now()) / 60000; }
   function canCancel(t) { return t.status === 'scheduled' && minsUntil(t) >= 60; }
   function statusBadge(t) {
     const cls = { scheduled: 'info', at_start: 'warn', en_route: 'ok', arrived: '', cancelled: 'bad' }[t.status] || '';
     return '<span class="badge ' + cls + '">' + esc(MB.statusLabel[t.status] || t.status) + '</span>';
+  }
+  function seatPill(t) {
+    if (t.status !== 'scheduled') return '<span class="pill gray">' + esc(MB.statusLabel[t.status] || '') + '</span>';
+    const left = seatsLeft(t);
+    if (left <= 0) return '<span class="pill bad">مكتملة' + (t.waitlist ? ' · انتظار ' + t.waitlist : '') + '</span>';
+    if (left <= 5) return '<span class="pill warn">متبقي ' + left + ' مقعد</span>';
+    return '<span class="pill ok">متبقي ' + left + ' مقعد</span>';
   }
   function toast(msg) {
     const el = document.createElement('div');
@@ -68,6 +83,26 @@
     if (m === null) return 'عدّت المحطة';
     return m <= 1 ? 'أقل من دقيقة' : m + ' دقيقة';
   }
+  // big ETA number for the trip card: "X دقيقة"
+  function etaBigHtml(t, sid) {
+    if (t.status === 'en_route') {
+      const m = MB.etaMinutes(t, sid);
+      if (m === null) return '—<small>عدّت محطتك</small>';
+      return (m <= 1 ? 1 : m) + '<small>دقيقة</small>';
+    }
+    if (t.status === 'scheduled') return esc(t.time) + '<small>الانطلاق</small>';
+    if (t.status === 'at_start') return 'الآن<small>في محطة البداية</small>';
+    if (t.status === 'arrived') return 'وصلت<small>انتهت الرحلة</small>';
+    return '—<small>' + esc(MB.statusLabel[t.status] || '') + '</small>';
+  }
+  // progress stepper: في الطريق -> قربت -> وصلت
+  function stepperHtml(t, sid) {
+    const m = t.status === 'en_route' ? MB.etaMinutes(t, sid) : null;
+    const near = t.status === 'en_route' && m !== null && m <= 3;
+    const idx = t.status === 'arrived' ? 2 : near ? 1 : (t.status === 'en_route' ? 0 : -1);
+    return '<ol class="stepper">' + ['في الطريق', 'قربت', 'وصلت'].map((n, i) =>
+      '<li class="' + (i < idx ? 'done' : i === idx ? 'cur' : '') + '"><span class="dot"></span>' + n + '</li>').join('') + '</ol>';
+  }
   function note(text, kind, tripId, altTripId) {
     return { id: uid('n'), ts: now(), text, read: false, kind: kind || 'info', tripId: tripId || null, altTripId: altTripId || null };
   }
@@ -93,7 +128,33 @@
     }
   }
 
+  // ---------- chat helpers ----------
+  function chatTrip(s) { return pickActive(s) || myTrips(s)[0] || null; }
+  function chatMsgs(s, tid) { return s.chat.filter((c) => c.tripId === tid).sort((a, b) => a.ts - b.ts); }
+  function unreadFor(s, tid) {
+    const since = s.me.chatReadTs || 0;
+    return s.chat.filter((c) => c.tripId === tid && c.from === 'driver' && c.ts > since).length;
+  }
+  function unreadChat(s) { return myTrips(s).reduce((n, t) => n + unreadFor(s, t.id), 0); }
+
   // ---------- state setup ----------
+  function seedChat(s) {
+    const t = pickActive(s);
+    if (!t || s.chat.some((c) => c.tripId === t.id)) return;
+    const who = firstName(s.me.name) || 'يا صاحبي';
+    const st = s.me.favStation ? stName(s.me.favStation) : 'المحطة';
+    const n = now();
+    const started = t.status === 'en_route' || t.status === 'arrived';
+    const opener = started
+      ? 'أهلاً يا ' + who + '، أنا الكابتن ' + drvFirst(t) + '. الأتوبيس انطلق من محطة البداية وجاي ناحيتك.'
+      : 'أهلاً يا ' + who + '، أنا الكابتن ' + drvFirst(t) + '. هبلغك أول ما نتحرك من محطة البداية.';
+    [
+      ['driver', opener, n - 16 * 60000],
+      ['student', 'تمام يا كابتن، أنا مستنيك في ' + st + '.', n - 14 * 60000],
+      ['driver', 'ماشي، هعدي على ' + st + ' بعد شوية. لو في حاجة قولّي.', n - 9 * 60000],
+    ].forEach(([from, text, ts]) => s.chat.push({ id: uid('c'), tripId: t.id, from, text, ts }));
+  }
+
   function ensure(s) {
     s.me = s.me || {};
     s.me.seen = s.me.seen || {};
@@ -101,11 +162,13 @@
     s.me.approachDone = s.me.approachDone || {};
     s.me.virtualStops = s.me.virtualStops || {};
     if (s.me.chatSeenTs == null) s.me.chatSeenTs = now();
+    if (s.me.chatReadTs == null) s.me.chatReadTs = now() - 30 * 60000;
     s.waiting = s.waiting || {};
-    ['myBookings', 'waitlistMine', 'sharedLinks', 'notifications', 'reports', 'ratings', 'sos', 'chat'].forEach((k) => {
+    ['myBookings', 'waitlistMine', 'sharedLinks', 'notifications', 'reports', 'ratings', 'chat'].forEach((k) => {
       if (!Array.isArray(s[k])) s[k] = [];
     });
     s.trips.forEach((t) => { s.waiting[t.id] = s.waiting[t.id] || {}; });
+    seedChat(s);
   }
 
   // Books one seat in trip t for the student (t must belong to state s).
@@ -281,11 +344,16 @@
     toast('تم إلغاء الجاهزية');
   }
 
-  function sendChat(tid) {
-    const txt = (draft.chat[tid] || '').trim();
-    if (!txt) return;
+  // text may be passed by a quick-reply chip; otherwise the input draft is sent
+  function sendChat(tid, text) {
+    const raw = text == null ? (draft.chat[tid] || '') : text;
+    const txt = String(raw).trim();
+    if (!txt || !trip(tid)) return;
+    chatForceScroll = true;
     MB.update((st) => st.chat.push({ id: uid('c'), tripId: tid, from: 'student', text: txt.slice(0, 300), ts: now() }));
     draft.chat[tid] = '';
+    const input = document.getElementById('chatInput');
+    if (input) input.value = '';
   }
 
   function sendRating(tid) {
@@ -307,26 +375,6 @@
     }));
     d.text = '';
     toast('تم إرسال البلاغ للإدارة');
-  }
-
-  function openSos() {
-    closeModal();
-    const m = document.createElement('div');
-    m.className = 'modal';
-    m.id = 'sosModal';
-    m.innerHTML = '<div class="card" role="dialog" aria-modal="true">' +
-      '<h2>تأكيد نداء الطوارئ</h2>' +
-      '<p class="mute">هيتبعت نداء فوري للإدارة باسمك ورقم رحلتك الحالية. اضغط تأكيد بس لو الموقف حقيقي.</p>' +
-      '<div class="row"><button class="btn bad grow" data-act="sos-confirm">تأكيد الإرسال</button>' +
-      '<button class="btn sec grow" data-act="modal-close">إلغاء</button></div></div>';
-    document.body.appendChild(m);
-  }
-  function closeModal() { document.querySelectorAll('.modal').forEach((m) => m.remove()); }
-  function sendSos() {
-    const t = pickActive(MB.state);
-    MB.update((st) => st.sos.push({ id: uid('sos'), ts: now(), student: st.me.name, tripId: t ? t.id : null }));
-    closeModal();
-    toast('تم إرسال نداء الطوارئ للإدارة');
   }
 
   // ---------- background watcher: targeted notifications (runs every second, writes only on events) ----------
@@ -388,17 +436,13 @@
     });
   }
 
-  // ---------- views ----------
+  // ---------- home bottom sheet cards ----------
   function readyCard(s) {
     const mine = new Set(s.myBookings.filter((b) => b.status === 'confirmed').map((b) => b.tripId));
     const list = s.trips.filter((t) => t.status === 'at_start')
       .sort((a, b) => (mine.has(b.id) ? 1 : 0) - (mine.has(a.id) ? 1 : 0))
       .slice(0, 2);
-    if (!list.length) {
-      const nx = s.trips.filter((t) => t.status === 'scheduled').sort((a, b) => a.scheduledAt - b.scheduledAt)[0];
-      return '<section class="card"><h3>محطة البداية</h3><p class="mute" style="margin:0">مفيش حافلة في محطة البداية دلوقتي.' +
-        (nx ? ' أول رحلة جاية: ' + esc(label(nx)) + ' الساعة ' + esc(nx.time) + '.' : '') + '</p></section>';
-    }
+    if (!list.length) return '';
     return list.map((t) => {
       const head = '<div class="row"><div class="grow"><h3 style="margin:0">' + esc(label(t)) + '</h3>' +
         '<div class="mute">' + (mine.has(t.id) ? 'حجزك في الرحلة دي' : 'رحلة في محطة البداية') + ' · ' + esc(MB.bus[t.busId].plate) + '</div></div>' +
@@ -425,7 +469,7 @@
 
   function missedCard(s, m) {
     const next = nextTripFor(s, m.t);
-    return '<section class="card" style="border-color:var(--bad)"><h3>فاتتك الرحلة</h3>' +
+    return '<section class="card" style="border:1px solid var(--bad)"><h3>فاتتك الرحلة</h3>' +
       '<div class="mute">الحافلة عدّت محطتك (' + esc(stName(s.me.favStation)) + ') في ' + esc(label(m.t)) + '.</div>' +
       (next
         ? '<div class="row" style="margin-top:10px"><div class="grow"><b>الرحلة الجاية: ' + esc(label(next)) + '</b>' +
@@ -442,8 +486,9 @@
     const stops = MB.stopsOf(t);
     const last = stops[stops.length - 1];
     const lastLink = s.sharedLinks.filter((l) => l.tripId === t.id).pop();
-    const msgs = s.chat.filter((c) => c.tripId === t.id).slice(-25);
+    const lastMsg = chatMsgs(s, t.id).slice(-1)[0];
     const moving = t.status === 'en_route';
+    const readyAt = s.me.ready[t.id];
     let skipNote = '';
     if (moving) {
       const skip = MB.emptyAhead(t).filter((id) => id !== fav);
@@ -452,49 +497,44 @@
         : 'مفيش محطات فاضية قدامها، الحافلة هتوقف في كل المحطات.';
     }
     const prog = Math.round(MB.progressOf(t) * 100);
-    let statusLine;
+    let statusLine = '';
     if (t.status === 'scheduled') statusLine = 'الرحلة الساعة ' + esc(t.time) + '. الوقت المتوقع للرحلة كاملة ' + TOTAL_MIN + ' دقيقة.';
     else if (t.status === 'at_start') statusLine = 'الحافلة في محطة البداية. سجّل جاهزيتك من فوق لو هتركب.';
     else if (t.status === 'arrived') statusLine = 'الرحلة خلصت. شكراً ليك.';
-    else statusLine = '';
 
-    return '<section class="card">' +
-      '<div class="row"><div class="grow"><div class="mute">رحلتك</div><h2 style="margin:0;font-size:18px">' + esc(label(t)) + '</h2></div>' + statusBadge(t) + '</div>' +
-      '<div class="grid g2" style="margin-top:10px">' +
-        '<div><div class="mute">السائق</div><b>' + esc(drv.name) + '</b> <span class="mute">' + esc(drv.rating) + ' ★</span></div>' +
-        '<div><div class="mute">رقم الحافلة</div><b>' + esc(bus.plate) + '</b></div>' +
-      '</div>' +
+    return '<section class="card trip-card">' +
+      '<div class="tc-top"><span class="avatar lg">' + esc(drvInitial(t)) + '</span>' +
+        '<div class="grow"><div class="mute">' + esc(label(t)) + '</div>' +
+        '<b class="tc-driver">' + esc(drv.name) + '</b>' +
+        '<div class="meta"><span class="plate">' + esc(bus.plate) + '</span><span class="rating">' + esc(drv.rating) + ' ★</span></div></div>' +
+        statusBadge(t) + '</div>' +
+      '<div class="eta-row"><div class="grow"><div class="mute">' + (moving ? 'الوصول لمحطتك · ' + esc(stName(fav)) : 'محطتك: ' + esc(stName(fav))) + '</div>' +
+        '<div class="eta-big" data-live="etabig" data-trip="' + t.id + '" data-station="' + fav + '">' + etaBigHtml(t, fav) + '</div></div>' +
+        '<div class="eta-side"><div class="mute">متبقي للنهاية</div><b data-live="eta" data-trip="' + t.id + '" data-station="' + last + '">' + esc(etaText(t, last)) + '</b></div></div>' +
+      '<div data-live="stepper" data-trip="' + t.id + '" data-station="' + fav + '">' + stepperHtml(t, fav) + '</div>' +
       (moving
-        ? '<div class="grid g2" style="margin-top:12px">' +
-            '<div><div class="mute">الوصول لمحطتك (' + esc(stName(fav)) + ')</div>' +
-              '<div class="kpi" data-live="eta" data-trip="' + t.id + '" data-station="' + fav + '">' + esc(etaText(t, fav)) + '</div></div>' +
-            '<div><div class="mute">الوقت المتوقع للرحلة كاملة: ' + TOTAL_MIN + ' دقيقة</div>' +
-              '<div class="mute">متبقي للنهاية: <b data-live="eta" data-trip="' + t.id + '" data-station="' + last + '">' + esc(etaText(t, last)) + '</b></div></div>' +
-          '</div>' +
-          '<div class="bar"><i data-live="bar" data-trip="' + t.id + '" style="width:' + prog + '%"></i></div>' +
+        ? '<div class="bar"><i data-live="bar" data-trip="' + t.id + '" style="width:' + prog + '%"></i></div>' +
           '<div class="note">' + esc(skipNote) + '</div>'
-        : '<p class="mute" style="margin:10px 0 0">' + statusLine + '</p>') +
-      '<div class="row" style="margin-top:12px"><button class="btn sec sm" data-act="share" data-trip="' + t.id + '">شارك رابط التتبع المباشر</button></div>' +
-      (lastLink ? '<div class="row" style="margin-top:8px"><input readonly value="' + esc(lastLink.url) + '" style="flex:1;direction:ltr">' +
-        '<button class="btn sec sm" data-act="copy" data-link="' + esc(lastLink.url) + '">نسخ</button></div>' : '') +
-      '<h3 style="margin:16px 0 6px;font-size:15px">محادثة مع السائق</h3>' +
-      '<div class="chat">' + (msgs.length
-        ? msgs.map((c) => '<div class="msg ' + (c.from === 'student' ? 'me' : '') + '">' + esc(c.text) + '</div>').join('')
-        : '<div class="mute">ابدأ المحادثة مع السائق لو محتاج حاجة</div>') + '</div>' +
-      '<div class="row"><input data-field="chat-text" data-trip="' + t.id + '" value="' + esc(draft.chat[t.id] || '') +
-        '" placeholder="اكتب رسالة للسائق" style="flex:1"><button class="btn sm" data-act="chat-send" data-trip="' + t.id + '">إرسال</button></div>' +
-      '</section>';
+        : '<p class="mute" style="margin:8px 0 0">' + statusLine + '</p>') +
+      '<div class="actions">' +
+        '<a class="act" href="#book">حجز</a>' +
+        '<button class="act pri" type="button" data-act="ready-go" data-trip="' + t.id + '"' + (t.status === 'at_start' && !readyAt ? '' : ' disabled') + '>' + (readyAt ? 'جاهز' : 'Ready') + '</button>' +
+        '<button class="act" type="button" data-act="share" data-trip="' + t.id + '">مشاركة الرحلة</button>' +
+        '<a class="act" href="#chat">شات<span class="cnt" data-badge="chat" hidden></span></a>' +
+      '</div>' +
+      '<a class="chat-preview" href="#chat">' + (lastMsg
+        ? '<span class="cp-who">' + (lastMsg.from === 'driver' ? 'السواق' : 'أنت') + '</span><span class="cp-text">' + esc(lastMsg.text) + '</span>'
+        : '<span class="cp-text mute">ابدأ الشات مع السواق</span>') + '</a>' +
+      (lastLink ? '<div class="row link-row"><input readonly value="' + esc(lastLink.url) + '" class="ltr">' +
+        '<button class="btn sec sm" type="button" data-act="copy" data-link="' + esc(lastLink.url) + '">نسخ</button></div>' : '') +
+      '<a class="more-link" href="#map">عرض المحطات على الخريطة الكاملة</a>' +
+    '</section>';
   }
 
-  function nextCard(s) {
-    const up = s.trips.filter((t) => t.status === 'scheduled').sort((a, b) => a.scheduledAt - b.scheduledAt);
-    const future = up.filter((t) => t.scheduledAt >= now() - 60000);
-    const list = (future.length ? future : up).slice(0, 3);
-    return '<section class="card"><h3>الرحلات الجاية</h3>' + (list.length
-      ? list.map((t) => '<div class="trip-row row"><div class="grow"><b>' + esc(label(t)) + '</b>' +
-          '<div class="mute">متبقي ' + seatsLeft(t) + ' من ' + t.capacity + ' مقعد</div></div>' +
-          (bookingFor(s, t.id) ? '<span class="badge ok">محجوزة</span>' : '<a class="btn sm" href="#book">احجز</a>') + '</div>').join('')
-      : '<p class="mute" style="margin:0">مفيش رحلات جاية حالياً.</p>') + '</section>';
+  function noTripCard() {
+    return '<section class="card"><h3>مفيش رحلة محجوزة دلوقتي</h3>' +
+      '<p class="mute" style="margin:0 0 10px">احجز مقعدك في أي رحلة جاية وهتظهر هنا برحلتك ووقت وصولك.</p>' +
+      '<a class="btn" href="#book">احجز رحلة</a></section>';
   }
 
   function ratingCard(s) {
@@ -510,28 +550,42 @@
       '<a class="btn sec sm" href="#support">أبلغ عن مشكلة</a></div></section>';
   }
 
+  function nextCard(s) {
+    const up = s.trips.filter((t) => t.status === 'scheduled').sort((a, b) => a.scheduledAt - b.scheduledAt);
+    const future = up.filter((t) => t.scheduledAt >= now() - 60000);
+    const list = (future.length ? future : up).slice(0, 3);
+    return '<section class="card"><h3>الرحلات الجاية</h3>' + (list.length
+      ? list.map((t) => {
+          const mine = bookingFor(s, t.id);
+          const act = mine ? '<span class="pill ok">محجوزة · مقعد ' + mine.seat + '</span>'
+            : seatsLeft(t) > 0 && t.status === 'scheduled'
+              ? '<button class="btn sm" type="button" data-act="book" data-trip="' + t.id + '">احجز</button>'
+              : '<button class="btn sec sm" type="button" data-act="waitlist" data-trip="' + t.id + '">انضم للانتظار</button>';
+          return '<div class="up-row"><div class="up-time">' + esc(t.time) + '</div>' +
+            '<div class="grow"><b>' + esc(routeDir(t)) + '</b><div class="meta">' + seatPill(t) + '</div></div>' + act + '</div>';
+        }).join('')
+      : '<p class="mute" style="margin:0">مفيش رحلات جاية حالياً.</p>') + '</section>';
+  }
+
   function favCard(s) {
     return '<section class="card"><h3>محطتي المفضلة</h3><select data-field="fav">' +
       MB.stations.map((st) => '<option value="' + st.id + '"' + (st.id === s.me.favStation ? ' selected' : '') + '>' + esc(st.name) + '</option>').join('') +
       '</select><p class="mute" style="margin:8px 0 0">بنستخدمها في إشعار اقتراب الحافلة وحساب وقت وصولك.</p></section>';
   }
 
-  function homeView(s) {
-    const active = pickActive(s);
+  function homeSheet(s, active) {
     const missed = missedInfo(s);
-    const firstName = String(s.me.name || '').split(' ')[0];
-    return '<section class="row" style="margin:4px 0 12px">' +
-      '<div class="grow"><div class="mute">أهلاً يا ' + esc(firstName) + '</div><h2 style="margin:0;font-size:20px">رحلتك النهاردة</h2></div>' +
-      '<span class="badge info">' + esc(s.me.plan) + '</span></section>' +
+    return '<div class="sheet-top"><div class="grow"><div class="mute">أهلاً يا ' + esc(firstName(s.me.name)) + '</div>' +
+      '<b class="sheet-title">رحلتك النهاردة</b></div><span class="pill info">' + esc(s.me.plan) + '</span></div>' +
       readyCard(s) +
       (missed ? missedCard(s, missed) : '') +
-      (active ? activeCard(s, active) : nextCard(s)) +
+      (active ? activeCard(s, active) : noTripCard()) +
       ratingCard(s) +
-      '<section class="card row"><div class="grow"><b>حالة طارئة؟</b><div class="mute">ابعت نداء فوري للإدارة</div></div>' +
-      '<button class="btn bad" data-act="sos-open">نداء طوارئ</button></section>' +
+      nextCard(s) +
       favCard(s);
   }
 
+  // ---------- other views ----------
   function tripRow(s, t) {
     const mine = bookingFor(s, t.id);
     const waiting = s.waitlistMine.some((w) => w.tripId === t.id && w.status === 'waiting');
@@ -541,9 +595,8 @@
     else if (seatsLeft(t) > 0) action = '<button class="btn sm" data-act="book" data-trip="' + t.id + '">احجز</button>';
     else if (waiting) action = '<span class="badge warn">في الانتظار</span>';
     else action = '<button class="btn sec sm" data-act="waitlist" data-trip="' + t.id + '">انضم للانتظار</button>';
-    const seatTxt = seatsLeft(t) > 0 ? 'متبقي ' + seatsLeft(t) + ' من ' + t.capacity + ' مقعد' : 'مكتملة · في الانتظار: ' + t.waitlist;
     return '<div class="trip-row row"><div class="grow"><b>' + esc(t.time) + '</b> ' + statusBadge(t) +
-      '<div class="mute">' + seatTxt + '</div></div>' + action + '</div>';
+      '<div class="meta">' + seatPill(t) + '</div></div>' + action + '</div>';
   }
 
   function myBookingsCard(s) {
@@ -589,7 +642,7 @@
         ? list.map((t) => tripRow(s, t)).join('')
         : '<p class="mute" style="margin:0">مفيش رحلات في الاتجاه ده</p>') + '</section>';
     };
-    return '<h2 style="margin:0 0 6px;font-size:18px">احجز مقعدك</h2>' +
+    return '<h2 class="section-title">احجز مقعدك</h2>' +
       '<div class="row" style="margin-bottom:6px">' + tabs + '</div>' +
       '<p class="mute" style="margin:0 0 12px">المحطات: ' + route.stops.map(stName).join(' ← ') + '</p>' +
       '<div class="grid g2">' + dirSection('go', 'ذهاب') + dirSection('back', 'عودة') + '</div>' +
@@ -603,12 +656,12 @@
       const alt = n.altTripId ? trip(n.altTripId) : null;
       const altBtn = alt && alt.status === 'scheduled' && seatsLeft(alt) > 0 && !bookingFor(s, alt.id)
         ? '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="book" data-trip="' + alt.id + '">احجز البديل: ' + esc(alt.time) + '</button></div>' : '';
-      return '<div class="card" style="' + (n.read ? '' : 'border-inline-start:4px solid var(--brand)') + '">' +
+      return '<div class="card" style="' + (n.read ? '' : 'box-shadow:inset 4px 0 0 var(--brand),var(--sh-card)') + '">' +
         '<div class="row"><span class="badge ' + (KIND_CLS[n.kind] || '') + '">' + esc(KIND_LABEL[n.kind] || 'عام') + '</span>' +
         '<span class="mute grow" style="text-align:start">' + MB.fmtTime(n.ts) + '</span></div>' +
         '<div style="margin-top:6px">' + esc(n.text) + '</div>' + altBtn + '</div>';
     }).join('');
-    return '<section class="row" style="margin-bottom:10px"><h2 class="grow" style="margin:0;font-size:18px">الإشعارات' +
+    return '<section class="row" style="margin-bottom:10px"><h2 class="grow section-title" style="margin:0">الإشعارات' +
       (unread ? ' <span class="badge bad">' + unread + ' جديد</span>' : '') + '</h2>' +
       '<button class="btn sec sm" data-act="notif-read">علّم الكل كمقروء</button></section>' + cards;
   }
@@ -622,9 +675,7 @@
     const rep = (r) => '<div class="trip-row"><div class="row"><b class="grow">' + esc(r.category) + '</b>' +
       (r.status === 'open' ? '<span class="badge warn">مفتوح</span>' : '<span class="badge ok">مغلق</span>') + '</div>' +
       '<div class="mute">' + MB.fmtTime(r.ts) + '</div><div style="margin-top:4px">' + esc(r.text) + '</div></div>';
-    return '<section class="card"><h2>نداء طوارئ</h2><p class="mute">للمواقف العاجلة بس. النداء بيوصل للإدارة فوراً.</p>' +
-      '<button class="btn bad big" data-act="sos-open">إرسال نداء طوارئ</button></section>' +
-      '<section class="card"><h2>أبلغ عن مشكلة</h2>' +
+    return '<section class="card"><h2>أبلغ عن مشكلة</h2>' +
       '<label>نوع المشكلة</label><select data-field="report-cat">' +
         REPORT_CATS.map((c) => '<option' + (c === d.cat ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>' +
       '<label>الرحلة</label><select data-field="report-trip">' + opts + '</select>' +
@@ -636,25 +687,100 @@
         recent.map(rep).join('') + '</section>';
   }
 
+  // ---------- chat (full-screen conversation with the driver) ----------
+  function noTripChat() {
+    return '<section class="card"><h2>الشات مع السواق</h2>' +
+      '<p class="mute">الشات بيفتح مع السواق لما يكون عندك رحلة محجوزة.</p>' +
+      '<a class="btn" href="#book">احجز رحلة</a></section>';
+  }
+
+  function chatShell(s, t) {
+    const drv = MB.drv[t.driverId] || { name: '—', rating: '—' };
+    const bus = MB.bus[t.busId] || { plate: '—' };
+    return '<header class="chat-head">' +
+      '<a class="chat-back" href="#home">رجوع</a>' +
+      '<span class="avatar">' + esc(drvInitial(t)) + '</span>' +
+      '<div class="grow chat-title"><b>' + esc(drv.name) + '</b>' +
+        '<div class="meta"><span class="plate">' + esc(bus.plate) + '</span><span class="rating">' + esc(drv.rating) + ' ★</span></div></div>' +
+      statusBadge(t) +
+    '</header>' +
+    '<div class="chat-list" id="chatList" aria-live="polite"></div>' +
+    '<div class="chat-dock">' +
+      '<div class="chips">' + QUICK_REPLIES.map((q) =>
+        '<button class="chip" type="button" data-act="chip" data-trip="' + t.id + '" data-text="' + esc(q) + '">' + esc(q) + '</button>').join('') + '</div>' +
+      '<div class="chat-input-row">' +
+        '<input id="chatInput" data-field="chat-text" data-trip="' + t.id + '" value="' + esc(draft.chat[t.id] || '') +
+        '" placeholder="اكتب رسالة للسواق" autocomplete="off" enterkeyhint="send">' +
+        '<button class="send-btn" type="button" data-act="chat-send" data-trip="' + t.id + '">إرسال</button>' +
+      '</div></div>';
+  }
+
+  function chatListHtml(s, tid) {
+    const msgs = chatMsgs(s, tid);
+    if (!msgs.length) return '<div class="chat-empty mute">ابدأ الكلام مع السواق. اختار رد سريع من تحت أو اكتب رسالة.</div>';
+    return msgs.map((c) => '<div class="bub-row ' + (c.from === 'student' ? 'me' : 'drv') + '"><div class="bub">' +
+      esc(c.text) + '</div><div class="bub-ts">' + esc(MB.fmtTime(c.ts)) + '</div></div>').join('');
+  }
+
+  // only the message list is re-rendered on updates, so the input keeps focus while typing
+  function updateChatList(s, t) {
+    const list = document.getElementById('chatList');
+    if (!list) return;
+    const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 96;
+    list.innerHTML = chatListHtml(s, t.id);
+    if (chatForceScroll || nearBottom) list.scrollTop = list.scrollHeight;
+    chatForceScroll = false;
+  }
+
+  function renderChat(s) {
+    const t = chatTrip(s);
+    document.body.classList.toggle('chatmode', !!t);
+    if (!t) {
+      destroyMap();
+      chatCtl = null;
+      app.className = 'wrap';
+      app.innerHTML = noTripChat();
+      return;
+    }
+    const key = 'chat:' + t.id;
+    if (chatCtl !== key || !document.getElementById('chatList')) {
+      destroyMap();
+      chatCtl = key;
+      app.className = 'wrap fs chatfs';
+      app.innerHTML = chatShell(s, t);
+      chatForceScroll = true;
+    }
+    updateChatList(s, t);
+    if (unreadChat(s) > 0) MB.update((st) => { st.me.chatReadTs = now(); });
+  }
+
   // ---------- maps (Leaflet, optional) ----------
   function destroyMap() {
     if (mapCtl && mapCtl.map) mapCtl.map.remove();
     mapCtl = null;
   }
 
-  function mountMap(key, tid) {
+  function fitRoute() {
+    if (!mapCtl || !mapCtl.map || !mapCtl.line) return;
+    const pad = mapCtl.home
+      ? { paddingTopLeft: [30, 96], paddingBottomRight: [30, Math.round(window.innerHeight * 0.5)] }
+      : { padding: [30, 30] };
+    mapCtl.map.fitBounds(mapCtl.line.getBounds(), pad);
+  }
+
+  function mountMap(key, tid, home) {
     const el = document.getElementById('mapBox');
     const t = trip(tid);
-    mapCtl = { key, tripId: tid, map: null, bus: null };
+    mapCtl = { key, tripId: tid, map: null, bus: null, line: null, home: !!home };
     if (!el || !t) return;
     if (!window.L) {
       el.style.height = 'auto';
-      el.innerHTML = '<div class="card mute" style="margin:0">الخريطة بتحتاج اتصال بالإنترنت عشان تتحمّل. التفاصيل والمحطات تحت.</div>';
+      el.innerHTML = '<div class="card mute map-fallback">الخريطة بتحتاج اتصال بالإنترنت عشان تتحمّل. التفاصيل والمحطات تحت.</div>';
       return;
     }
     const L = window.L;
     const route = MB.R[t.routeId];
-    const map = L.map(el, { scrollWheelZoom: false }).setView([30.04, 31.25], 12);
+    const map = L.map(el, { scrollWheelZoom: false, zoomControl: !home }).setView([30.04, 31.25], 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
     const line = L.polyline(MB.polyOf(t), { color: route.color, weight: 5, opacity: 0.85 }).addTo(map);
     MB.stopsOf(t).forEach((sid, i) => {
@@ -663,8 +789,17 @@
         icon: L.divIcon({ className: '', html: '<div class="pin">' + (i + 1) + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] }),
       }).bindPopup(esc((i + 1) + '. ' + st.name)).addTo(map);
     });
-    map.fitBounds(line.getBounds(), { padding: [30, 30] });
+    // pulsing pickup marker at the student's favourite station
+    const fav = MB.S[MB.state.me.favStation];
+    if (fav) {
+      L.marker([fav.lat, fav.lng], {
+        icon: L.divIcon({ className: 'mb-me', html: '<span class="me-ring"></span><span class="me-dot"></span>', iconSize: [26, 26], iconAnchor: [13, 13] }),
+        interactive: false, zIndexOffset: 500,
+      }).addTo(map);
+    }
     mapCtl.map = map;
+    mapCtl.line = line;
+    fitRoute();
     tickMap();
   }
 
@@ -677,9 +812,9 @@
       if (!mapCtl.bus) {
         mapCtl.bus = window.L.marker([pos.lat, pos.lng], {
           icon: window.L.divIcon({
-            className: '',
-            html: '<div class="pin bus" style="width:auto;height:28px;padding:0 8px;font-size:11px">حافلة</div>',
-            iconSize: [64, 28], iconAnchor: [32, 14],
+            className: 'mb-bus',
+            html: '<div class="bus-pill" style="--rc:' + MB.R[t.routeId].color + '"><span>حافلة</span></div>',
+            iconSize: [72, 30], iconAnchor: [36, 15],
           }),
           zIndexOffset: 1000,
         }).addTo(mapCtl.map);
@@ -719,13 +854,13 @@
   function mapShell(s, tid) {
     const opts = s.trips.map((t) => '<option value="' + t.id + '"' + (t.id === tid ? ' selected' : '') + '>' +
       esc(label(t)) + ' · ' + esc(MB.statusLabel[t.status] || '') + '</option>').join('');
-    return '<h2 style="margin:0 0 8px;font-size:18px">الخريطة المباشرة</h2>' +
+    return '<h2 class="section-title">الخريطة المباشرة</h2>' +
       '<select data-field="map-trip" aria-label="اختار الرحلة" style="margin-bottom:12px">' + opts + '</select>' +
       '<div id="mapBox" class="map tall"></div><div id="mapInfo"></div>';
   }
 
   function trackShell() {
-    return '<section class="card"><h2 style="margin:0 0 4px;font-size:18px">تتبع مباشر للرحلة</h2>' +
+    return '<section class="card"><h2 class="section-title">تتبع مباشر للرحلة</h2>' +
       '<div class="mute">رابط للقراءة فقط. مفيش تسجيل دخول ولا بيانات شخصية.</div></section>' +
       '<div id="mapBox" class="map tall"></div><div id="mapInfo"></div>';
   }
@@ -755,14 +890,33 @@
         if (!mapCtl || mapCtl.key !== key) { destroyMap(); app.innerHTML = notFoundView(); mapCtl = { key, map: null, bus: null }; }
         return;
       }
-      if (!mapCtl || mapCtl.key !== key) { destroyMap(); app.innerHTML = trackShell(); mountMap(key, r.id); }
+      if (!mapCtl || mapCtl.key !== key) { destroyMap(); app.innerHTML = trackShell(); mountMap(key, r.id, false); }
       refreshInfo(s, t, true);
       return;
     }
     const tid = pickMapTrip(s);
     const key = 'map:' + tid;
-    if (!mapCtl || mapCtl.key !== key) { destroyMap(); app.innerHTML = mapShell(s, tid); mountMap(key, tid); }
+    if (!mapCtl || mapCtl.key !== key) { destroyMap(); app.innerHTML = mapShell(s, tid); mountMap(key, tid, false); }
     refreshInfo(s, trip(tid), false);
+  }
+
+  // full-bleed map with a bottom sheet for the home screen
+  function renderHome(s) {
+    const active = pickActive(s);
+    const tid = active ? active.id : (s.trips.find((x) => x.status === 'en_route') || s.trips[0]).id;
+    const key = 'home:' + tid;
+    app.className = 'wrap fs';
+    if (!mapCtl || mapCtl.key !== key || !document.getElementById('sheetBody')) {
+      destroyMap();
+      app.innerHTML = '<div id="mapBox" class="map map-full"></div>' +
+        '<button class="recenter" type="button" data-act="recenter">تمركز على الرحلة</button>' +
+        '<section class="sheet' + (sheetMin ? ' min' : '') + '" id="sheet">' +
+          '<div class="sheet-handle" data-act="sheet-toggle" role="button" tabindex="0" aria-label="إظهار أو إخفاء اللوحة"></div>' +
+          '<div class="sheet-body" id="sheetBody"></div>' +
+        '</section>';
+      mountMap(key, tid, true);
+    }
+    document.getElementById('sheetBody').innerHTML = homeSheet(s, active);
   }
 
   // ---------- render loop ----------
@@ -772,26 +926,57 @@
     return { view: VIEWS.indexOf(h) >= 0 ? h : 'home', id: '' };
   }
 
+  function setBadges(kind, n) {
+    document.querySelectorAll('[data-badge="' + kind + '"]').forEach((el) => {
+      el.textContent = n ? String(n) : '';
+      el.hidden = !n;
+    });
+  }
+
+  function updateBadges(s) {
+    setBadges('alerts', s.notifications.filter((n) => !n.read).length);
+    setBadges('chat', unreadChat(s));
+  }
+
   function render() {
     const s = MB.state;
     if (!s) return;
     const r = parseRoute();
     document.body.classList.toggle('track', r.view === 'track');
+    document.body.classList.toggle('homemap', r.view === 'home');
     document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.view === r.view));
-    const unread = s.notifications.filter((n) => !n.read).length;
-    const cEl = document.getElementById('unreadCount');
-    if (cEl) cEl.textContent = unread ? String(unread) : '';
-    if (r.view === 'map' || r.view === 'track') { renderMapView(s, r); return; }
-    destroyMap();
-    const views = { home: homeView, book: bookView, alerts: alertsView, support: supportView };
-    app.innerHTML = views[r.view](s);
+    if (r.view === 'chat') {
+      renderChat(s);
+    } else {
+      chatCtl = null;
+      document.body.classList.remove('chatmode');
+      if (r.view === 'home') {
+        renderHome(s);
+      } else if (r.view === 'map' || r.view === 'track') {
+        app.className = 'wrap';
+        renderMapView(s, r);
+      } else {
+        destroyMap();
+        app.className = 'wrap';
+        app.innerHTML = { book: bookView, alerts: alertsView, support: supportView }[r.view](s);
+      }
+    }
+    updateBadges(s);
   }
 
-  // live values every second: bus marker, ETAs and progress bars (no full re-render, so inputs keep focus)
+  // live values every second: bus marker, ETAs, big ETA, stepper and progress (no full re-render, so inputs keep focus)
   function tick() {
     if (mapCtl && mapCtl.map) tickMap();
     document.querySelectorAll('[data-live="eta"]').forEach((el) => {
       el.textContent = etaText(trip(el.dataset.trip), el.dataset.station);
+    });
+    document.querySelectorAll('[data-live="etabig"]').forEach((el) => {
+      const t = trip(el.dataset.trip);
+      if (t) el.innerHTML = etaBigHtml(t, el.dataset.station);
+    });
+    document.querySelectorAll('[data-live="stepper"]').forEach((el) => {
+      const t = trip(el.dataset.trip);
+      if (t) el.innerHTML = stepperHtml(t, el.dataset.station);
     });
     document.querySelectorAll('[data-live="bar"]').forEach((el) => {
       const t = trip(el.dataset.trip);
@@ -812,6 +997,7 @@
       case 'ready-undo': readyUndo(d.trip); break;
       case 'share': shareTrip(d.trip); break;
       case 'copy': copyText(d.link); break;
+      case 'chip': sendChat(d.trip, d.text); break;
       case 'chat-send': sendChat(d.trip); break;
       case 'book': bookAction(d.trip); break;
       case 'waitlist': joinWaitlist(d.trip); break;
@@ -822,10 +1008,23 @@
       case 'missed-dismiss': dismissMissed(d.id); break;
       case 'report-send': sendReport(); break;
       case 'notif-read': MB.update((st) => st.notifications.forEach((n) => { n.read = true; })); break;
-      case 'sos-open': openSos(); break;
-      case 'sos-confirm': sendSos(); break;
-      case 'modal-close': closeModal(); break;
+      case 'sheet-toggle': {
+        sheetMin = !sheetMin;
+        const sh = document.getElementById('sheet');
+        if (sh) sh.classList.toggle('min', sheetMin);
+        break;
+      }
+      case 'recenter': fitRoute(); break;
       default: break;
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    const el = e.target;
+    if (el && el.dataset && el.dataset.field === 'chat-text') {
+      e.preventDefault();
+      sendChat(el.dataset.trip);
     }
   });
 
@@ -866,8 +1065,9 @@
 
   // ---------- boot ----------
   MB.subscribe(() => {
-    if (busy()) pending = true;
-    else render();
+    // the chat screen updates its message list in place, so it never waits for the input to blur
+    if (parseRoute().view === 'chat' || !busy()) render();
+    else pending = true;
   });
   MB.update(ensure);
   render();

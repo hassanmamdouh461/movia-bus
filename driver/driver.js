@@ -1,10 +1,18 @@
-/* Movia Bus - driver app. Depends on ../shared/core.js (window.MB) and Leaflet (window.L, optional). */
+/* Movia Bus - driver app (ride-hailing layout). Depends on ../shared/core.js (window.MB) and Leaflet (window.L, optional). */
 (function () {
   'use strict';
 
   const DRIVER_KEY = 'mb_driver_id';
-  const QUICK_REPLIES = ['أنا في الطريق', 'وصلت المحطة', 'هتأخر شوية (5 دقايق)', 'الأتوبيس زحمة'];
+  const CHAT_READ_KEY = 'mb_driver_chat_read'; // per-viewer convenience: { tripId: lastReadTs }
+  const QUICK_REPLIES = ['أنا في الطريق', 'وصلت المحطة', 'هستنى دقيقة', 'هتأخر شوية (5 دقايق)', 'الأتوبيس زحمة'];
   const STATUS_STEPS = [['scheduled', 'لم تبدأ'], ['en_route', 'في الطريق'], ['arrived', 'وصل الجامعة / انتهت']];
+  // seeded so the chat is never blank for a trip (ago = ms before now)
+  const SEED_CHAT = [
+    { from: 'student', text: 'السلام عليكم يا أستاذ، الأتوبيس فين دلوقتي؟', ago: 12 * 60000 },
+    { from: 'driver', text: 'وعليكم السلام، أنا في الطريق', ago: 10 * 60000 },
+    { from: 'student', text: 'تمام، أنا مستنّي عند المحطة', ago: 3 * 60000 },
+  ];
+  const NEAR_BOTTOM_PX = 120;
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
@@ -35,7 +43,12 @@
       || list.filter((t) => t.status === 'arrived').pop()
       || list[0] || null;
   }
-  function findTrip(id) { return MB.state.trips.find((t) => t.id === id); }
+  function isToday(ts) { return new Date(ts).toDateString() === new Date().toDateString(); }
+  // index of the next stop while running, -1 otherwise
+  function nextIndex(trip) {
+    const pos = trip.status === 'en_route' ? MB.position(trip) : null;
+    return pos ? pos.nextStopIdx : -1;
+  }
 
   // a scheduled trip becomes "at_start" when the driver opens the app near its time (+/- 30 min)
   function ensureAtStart() {
@@ -80,13 +93,14 @@
   // ---------- map ----------
   let map = null, routeLayer = null, crowdLayer = null, busLayer = null;
   let lastTripId = null, lastKey = '', lastDemandSig = '', lastSaveSig = '', lastChatSig = '';
+  let chatOpen = false, forceChatScroll = false;
 
   function initMap() {
     if (typeof L === 'undefined') {
       $('map').innerHTML = '<p class="mute" style="padding:16px">الخريطة مش متاحة دلوقتي (محتاج إنترنت). التفاصيل تحت.</p>';
       return;
     }
-    map = L.map('map', { scrollWheelZoom: false }).setView([30.04, 31.27], 12);
+    map = L.map('map', { zoomControl: false, scrollWheelZoom: false }).setView([30.04, 31.27], 12);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -95,6 +109,7 @@
     crowdLayer = L.layerGroup().addTo(map);
     busLayer = L.layerGroup().addTo(map);
     setTimeout(() => map.invalidateSize(), 0);
+    window.addEventListener('resize', () => map && map.invalidateSize());
   }
 
   function drawRoute(trip) {
@@ -102,14 +117,21 @@
     routeLayer.clearLayers();
     const route = MB.R[trip.routeId];
     const poly = MB.polyOf(trip);
-    L.polyline(poly, { color: route.color, weight: 6, opacity: 0.85 }).addTo(routeLayer);
-    map.fitBounds(L.latLngBounds(poly), { padding: [30, 30] });
+    L.polyline(poly, { color: route.color, weight: 7, opacity: 0.9 }).addTo(routeLayer);
+    // keep the route clear of the top pill and the bottom sheet
+    map.fitBounds(L.latLngBounds(poly), {
+      paddingTopLeft: [30, 100],
+      paddingBottomRight: [30, Math.round(window.innerHeight * 0.6) + 20],
+    });
   }
+
+  function chipClass(n) { return n >= 5 ? 'chip warn' : n > 0 ? 'chip info' : 'chip'; }
 
   function renderDemand(trip) {
     const stops = MB.stopsOf(trip);
     const counts = MB.waitingCounts(trip.id);
-    const sig = trip.id + '|' + stops.map((s) => counts[s] || 0).join(',');
+    const nextIdx = nextIndex(trip);
+    const sig = trip.id + '|' + nextIdx + '|' + stops.map((s) => counts[s] || 0).join(',');
     if (sig === lastDemandSig) return;
     lastDemandSig = sig;
     if (map) {
@@ -126,10 +148,12 @@
         }).bindTooltip(st.name).addTo(crowdLayer);
       });
     }
-    $('demandList').innerHTML = stops.map((sid) => {
+    $('demandList').innerHTML = stops.map((sid, i) => {
       const n = counts[sid] || 0;
-      return '<div class="row-item"><span class="grow">' + esc(MB.S[sid].name) + '</span>' +
-        '<span class="badge' + (n ? ' info' : '') + '">' + n + ' منتظر</span></div>';
+      const cls = i < nextIdx ? 'passed' : i === nextIdx ? 'next' : '';
+      return '<div class="stop-row ' + cls + '"><span class="stop-dot"></span>' +
+        '<span class="grow">' + esc(MB.S[sid].name) + '</span>' +
+        '<span class="' + chipClass(n) + '">' + n + ' منتظر</span></div>';
     }).join('');
   }
 
@@ -151,7 +175,15 @@
     }
   }
 
-  // ---------- trip card ----------
+  // ---------- status pill ----------
+  function renderPill(trip) {
+    const state = !trip ? 'off' : trip.status === 'en_route' ? 'live' : 'on';
+    const pill = $('statusPill');
+    pill.dataset.state = state;
+    $('statusText').textContent = state === 'live' ? 'في رحلة' : state === 'on' ? 'متصل' : 'غير متصل';
+  }
+
+  // ---------- trip card (header + primary action) ----------
   function renderHeader(trip) {
     const s = trip.status;
     $('tripTitle').textContent = MB.tripLabel(trip);
@@ -159,43 +191,76 @@
     $('tripMeta').textContent = 'الأتوبيس ' + plate + ' · المقاعد المحجوزة ' + trip.booked + ' من ' + trip.capacity +
       (trip.waitlist ? ' · قايمة انتظار ' + trip.waitlist : '');
 
-    const badge = $('statusBadge');
-    badge.textContent = MB.statusLabel[s] || s;
-    badge.className = 'badge ' + (s === 'en_route' ? 'info' : s === 'arrived' ? 'ok' : 'warn');
-
     const idx = s === 'en_route' ? 1 : s === 'arrived' ? 2 : 0;
     $('chain').innerHTML = STATUS_STEPS.map((st, i) =>
       '<li class="' + (i < idx ? 'done' : i === idx ? 'cur' : '') + '">' +
       (i === 0 && s === 'at_start' ? MB.statusLabel.at_start : st[1]) + '</li>').join('');
 
-    $('autoBadge').hidden = s !== 'en_route';
-    $('btnStart').disabled = !(s === 'scheduled' || s === 'at_start');
-    $('btnEnd').disabled = s !== 'en_route';
+    const btn = $('btnMain');
+    if (s === 'en_route') {
+      btn.textContent = 'أنهِ الرحلة';
+      btn.className = 'btn big go-btn bad';
+      btn.disabled = false;
+    } else if (s === 'scheduled' || s === 'at_start') {
+      btn.textContent = 'ابدأ الرحلة';
+      btn.className = 'btn big go-btn ok';
+      btn.disabled = false;
+    } else {
+      btn.textContent = 'الرحلة خلصت';
+      btn.className = 'btn big go-btn';
+      btn.disabled = true;
+    }
 
     $('hint').textContent =
       s === 'en_route' ? 'ما تقفلش الشاشة عشان البث يفضل شغال.' :
       s === 'arrived' ? 'انتهت الرحلة. الرحلة الجاية هتظهر هنا تلقائيًا.' :
       'اضغط "ابدأ الرحلة" لما تتحرك من محطة البداية.';
+    $('chatSub').textContent = MB.tripLabel(trip);
   }
 
-  function renderEta(trip) {
-    const el = $('etaLine');
+  // big next-stop card: ETA + waiting COUNT only
+  function renderNext(trip) {
+    const counts = MB.waitingCounts(trip.id);
+    const stops = MB.stopsOf(trip);
     const pos = trip.status === 'en_route' ? MB.position(trip) : null;
     if (pos) {
-      const eta = MB.etaMinutes(trip, pos.nextStopId);
-      el.textContent = 'المحطة القادمة: ' + MB.S[pos.nextStopId].name + (eta != null ? ' · حوالي ' + eta + ' دقيقة' : '');
-    } else if (trip.status === 'at_start' || trip.status === 'scheduled') {
-      el.textContent = 'ميعاد الانطلاق ' + trip.time;
+      const sid = pos.nextStopId, eta = MB.etaMinutes(trip, sid);
+      $('nextLabel').textContent = 'المحطة القادمة';
+      $('nextName').textContent = MB.S[sid].name;
+      $('nextWait').textContent = (counts[sid] || 0) + ' طالب منتظر';
+      $('etaNum').textContent = eta != null ? eta : '—';
+      $('etaUnit').textContent = 'دقيقة';
+    } else if (trip.status === 'scheduled' || trip.status === 'at_start') {
+      const first = stops[0];
+      $('nextLabel').textContent = 'ميعاد الانطلاق';
+      $('nextName').textContent = MB.S[first].name;
+      $('nextWait').textContent = (counts[first] || 0) + ' طالب منتظر';
+      $('etaNum').textContent = trip.time;
+      $('etaUnit').textContent = 'من محطة البداية';
     } else {
-      el.textContent = 'الرحلة خلصت';
+      $('nextLabel').textContent = 'الرحلة خلصت';
+      $('nextName').textContent = MB.S[stops[stops.length - 1]].name;
+      $('nextWait').textContent = '';
+      $('etaNum').textContent = '—';
+      $('etaUnit').textContent = 'وصلت';
     }
   }
 
-  // ---------- save-time card ----------
+  // earnings-like stat row from existing data
+  function renderStats() {
+    const today = driverTrips().filter((t) => isToday(t.scheduledAt));
+    $('statTrips').textContent = today.length;
+    $('statPax').textContent = today.reduce((n, t) => n + (t.booked || 0), 0);
+    const d = MB.drv[driverId];
+    $('statRating').textContent = d && d.rating ? d.rating.toFixed(1) : '—';
+  }
+
+  // ---------- save-time card (skip empty stops) ----------
   function renderSave(trip) {
     const box = $('saveList');
     if (trip.status !== 'en_route') {
-      lastSaveSig = '';
+      if (lastSaveSig === 'idle') return;
+      lastSaveSig = 'idle';
       box.innerHTML = '<p class="mute">المحطات الفاضية اللي قدامك هتظهر لما الرحلة تبدأ.</p>';
       return;
     }
@@ -209,69 +274,132 @@
       box.innerHTML = '<p class="mute">كل المحطات اللي قدامك فيها ركاب، مفيش حاجة تتخطى.</p>';
       return;
     }
-    box.innerHTML = skip.map((sid) =>
-      '<div class="row-item"><span class="grow">' + esc(MB.S[sid].name) + '</span>' +
-      '<span class="mute">توفير ~' + seg + ' د</span>' +
-      '<button class="btn sm sec" data-skip="' + esc(sid) + '" data-min="' + seg + '">تخطي</button></div>').join('') +
-      '<p class="mute" style="margin-top:8px">إجمالي التوفير التقديري: ' + skip.length * seg + ' دقيقة</p>';
+    box.innerHTML =
+      '<p class="save-sum">فيه <b>' + skip.length + '</b> محطات مفيهاش حد منتظر · توفير تقديري <b>' +
+      (skip.length * seg) + ' دقيقة</b></p>' +
+      skip.map((sid) =>
+        '<div class="row-item"><span class="grow">' + esc(MB.S[sid].name) + '</span>' +
+        '<span class="mute">~' + seg + ' د</span>' +
+        '<button class="btn sm sec" data-skip="' + esc(sid) + '" data-min="' + seg + '">تخطي</button></div>').join('');
   }
 
   // ---------- chat ----------
+  function chatMsgs(trip) {
+    return (MB.state.chat || []).filter((m) => m.tripId === trip.id).sort((a, b) => a.ts - b.ts);
+  }
+  function readMap() {
+    try { return JSON.parse(localStorage.getItem(CHAT_READ_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function markRead(trip) {
+    const msgs = chatMsgs(trip);
+    const last = msgs.length ? msgs[msgs.length - 1].ts : 0;
+    const map_ = readMap();
+    if ((map_[trip.id] || 0) >= last) return;
+    map_[trip.id] = last;
+    try { localStorage.setItem(CHAT_READ_KEY, JSON.stringify(map_)); } catch (e) {}
+  }
+
+  // seed a short conversation when a trip has no messages yet (returns true if it wrote state)
+  function seedChat(trip) {
+    if (chatMsgs(trip).length) return false;
+    const now = Date.now();
+    MB.update((s) => {
+      s.chat = s.chat || [];
+      SEED_CHAT.forEach((m, i) => s.chat.push({
+        id: 'seed' + trip.id + i, tripId: trip.id, from: m.from, text: m.text, ts: now - m.ago,
+      }));
+    });
+    return true;
+  }
+
+  function bubbleHtml(m) {
+    return '<div class="bubble ' + (m.from === 'driver' ? 'driver' : 'student') + '">' +
+      '<span>' + esc(maskPhones(m.text)) + '</span>' +
+      '<time>' + MB.fmtTime(m.ts) + '</time></div>';
+  }
+
   function renderChat(trip) {
-    const msgs = (MB.state.chat || []).filter((m) => m.tripId === trip.id).sort((a, b) => a.ts - b.ts).slice(-50);
+    const msgs = chatMsgs(trip).slice(-60);
     const sig = trip.id + '|' + msgs.map((m) => m.id).join(',');
-    if (sig === lastChatSig) return;
-    lastChatSig = sig;
     const box = $('chatList');
-    if (!msgs.length) { box.innerHTML = '<p class="mute">مفيش رسايل لحد دلوقتي.</p>'; return; }
-    box.innerHTML = msgs.map((m) =>
-      '<div class="msg ' + (m.from === 'driver' ? 'me' : 'them') + '">' +
-      '<div class="mute">' + (m.from === 'driver' ? 'أنت' : 'طالب') + ' · ' + MB.fmtTime(m.ts) + '</div>' +
-      '<div>' + esc(maskPhones(m.text)) + '</div></div>').join('');
-    box.scrollTop = box.scrollHeight;
+    const near = box.scrollHeight - box.scrollTop - box.clientHeight < NEAR_BOTTOM_PX;
+    const changed = sig !== lastChatSig;
+    if (changed) {
+      lastChatSig = sig;
+      box.innerHTML = msgs.length ? msgs.map(bubbleHtml).join('')
+        : '<p class="mute chat-empty">مفيش رسايل لحد دلوقتي.</p>';
+    }
+    if (chatOpen && (forceChatScroll || (changed && near))) box.scrollTop = box.scrollHeight;
+    forceChatScroll = false;
+  }
+
+  function renderChatBadge(trip) {
+    if (chatOpen) markRead(trip);
+    const read = readMap()[trip.id] || 0;
+    const unread = chatOpen ? 0 : chatMsgs(trip).filter((m) => m.from === 'student' && m.ts > read).length;
+    const badge = $('chatBadge');
+    badge.hidden = !unread;
+    badge.textContent = unread > 9 ? '9+' : String(unread);
   }
 
   function sendChat(text) {
     const t = currentTrip();
     const clean = String(text || '').trim().slice(0, 200);
     if (!t || !clean) return;
+    forceChatScroll = true;
     MB.update((s) => {
       s.chat = s.chat || [];
       s.chat.push({ id: 'c' + Date.now() + Math.random().toString(36).slice(2, 6), tripId: t.id, from: 'driver', text: clean, ts: Date.now() });
     });
   }
 
+  function setChatOpen(on) {
+    chatOpen = !!on;
+    $('chatScreen').hidden = !chatOpen;
+    if (chatOpen) forceChatScroll = true;
+    refresh();
+  }
+
   function setChatEnabled(on) {
     $('chatIn').disabled = !on;
     $('chatSend').disabled = !on;
-    document.querySelectorAll('#quick .btn').forEach((b) => { b.disabled = !on; });
+    $('chatFab').disabled = !on;
+    document.querySelectorAll('#quick .qchip').forEach((b) => { b.disabled = !on; });
   }
 
   // ---------- main refresh (idempotent; called on every state change and every second) ----------
   function renderEmpty() {
+    renderPill(null);
+    if (lastKey === 'EMPTY') return;
+    lastKey = 'EMPTY'; lastTripId = null; lastDemandSig = ''; lastSaveSig = ''; lastChatSig = '';
     $('tripTitle').textContent = 'مفيش رحلات مسجلة ليك';
     $('tripMeta').textContent = 'اختار سائق تاني من فوق.';
     $('chain').innerHTML = '';
-    $('statusBadge').textContent = '—';
-    $('statusBadge').className = 'badge';
-    $('autoBadge').hidden = true;
-    $('btnStart').disabled = true;
-    $('btnEnd').disabled = true;
+    $('btnMain').textContent = 'ابدأ الرحلة';
+    $('btnMain').className = 'btn big go-btn';
+    $('btnMain').disabled = true;
     $('hint').textContent = '';
-    $('etaLine').textContent = '';
+    $('nextLabel').textContent = 'المحطة القادمة';
+    $('nextName').textContent = '—';
+    $('nextWait').textContent = '';
+    $('etaNum').textContent = '—';
+    $('etaUnit').textContent = '';
     $('demandList').innerHTML = '<p class="mute">لا توجد محطات.</p>';
     $('saveList').innerHTML = '<p class="mute">لا توجد محطات.</p>';
-    $('chatList').innerHTML = '<p class="mute">مفيش محادثة.</p>';
+    $('chatList').innerHTML = '<p class="mute chat-empty">مفيش محادثة.</p>';
+    $('chatSub').textContent = '';
+    $('chatBadge').hidden = true;
     if (map) { routeLayer.clearLayers(); crowdLayer.clearLayers(); busLayer.clearLayers(); }
-    lastTripId = null; lastKey = ''; lastDemandSig = ''; lastSaveSig = ''; lastChatSig = '';
     setChatEnabled(false);
   }
 
   function refresh() {
+    renderStats();
     const trip = currentTrip();
     if (!trip) { renderEmpty(); return; }
-    setChatEnabled(true);
+    if (seedChat(trip)) return; // seeding emits its own refresh
 
+    setChatEnabled(true);
     const key = trip.id + '|' + trip.status;
     if (key !== lastKey) { lastKey = key; renderHeader(trip); }
     if (trip.id !== lastTripId) {
@@ -279,11 +407,13 @@
       lastDemandSig = ''; lastSaveSig = ''; lastChatSig = '';
       drawRoute(trip);
     }
+    renderPill(trip);
     renderBus(trip);
-    renderEta(trip);
+    renderNext(trip);
     renderDemand(trip);
     renderSave(trip);
     renderChat(trip);
+    renderChatBadge(trip);
   }
 
   // ---------- wiring ----------
@@ -301,26 +431,30 @@
   }
 
   function bindActions() {
-    $('btnStart').onclick = () => {
+    $('btnMain').onclick = () => {
       const t = currentTrip();
-      if (!t || (t.status !== 'scheduled' && t.status !== 'at_start')) return;
-      MB.update((s) => {
-        const x = s.trips.find((z) => z.id === t.id);
-        if (x) { x.status = 'en_route'; x.startedAt = Date.now(); }
-      });
-      MB.notify('بدأت رحلة ' + MB.tripLabel(t), 'bus');
-      toast('بدأت الرحلة، البث التلقائي شغال');
+      if (!t) return;
+      if (t.status === 'scheduled' || t.status === 'at_start') {
+        MB.update((s) => {
+          const x = s.trips.find((z) => z.id === t.id);
+          if (x) { x.status = 'en_route'; x.startedAt = Date.now(); }
+        });
+        MB.notify('بدأت رحلة ' + MB.tripLabel(t), 'bus');
+        toast('بدأت الرحلة، البث التلقائي شغال');
+      } else if (t.status === 'en_route') {
+        if (!window.confirm('متأكد إنك عايز تنهي الرحلة؟')) return;
+        MB.update((s) => {
+          const x = s.trips.find((z) => z.id === t.id);
+          if (x) x.status = 'arrived';
+        });
+        toast('تم إنهاء الرحلة. شكرًا يا أستاذ');
+      }
     };
 
-    $('btnEnd').onclick = () => {
-      const t = currentTrip();
-      if (!t || t.status !== 'en_route') return;
-      if (!window.confirm('متأكد إنك عايز تنهي الرحلة؟')) return;
-      MB.update((s) => {
-        const x = s.trips.find((z) => z.id === t.id);
-        if (x) x.status = 'arrived';
-      });
-      toast('تم إنهاء الرحلة. شكرًا يا أستاذ');
+    $('sheetToggle').onclick = () => {
+      const collapsed = $('sheet').classList.toggle('collapsed');
+      document.body.classList.toggle('sheet-collapsed', collapsed);
+      $('sheetToggle').setAttribute('aria-expanded', String(!collapsed));
     };
 
     $('saveList').addEventListener('click', (e) => {
@@ -328,10 +462,15 @@
       if (b) openSkip(b.getAttribute('data-skip'), Number(b.getAttribute('data-min')) || 1);
     });
 
+    $('chatFab').onclick = () => setChatOpen(true);
+    $('chatClose').onclick = () => setChatOpen(false);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && chatOpen) setChatOpen(false); });
+
     const quick = $('quick');
     QUICK_REPLIES.forEach((txt) => {
       const b = document.createElement('button');
-      b.className = 'btn sec sm';
+      b.type = 'button';
+      b.className = 'qchip';
       b.textContent = txt;
       b.onclick = () => sendChat(txt);
       quick.appendChild(b);

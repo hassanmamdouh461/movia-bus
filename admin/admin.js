@@ -76,7 +76,7 @@
   let cmpCat = 'all';
   let polDraft = null;
   let lastScan = null;
-  let cur = 'publish';
+  let cur = 'monitor';
 
   // nearest alternative: same line & direction first, then same line, then any line; same day, published, not started
   function findAlt(t) {
@@ -355,9 +355,9 @@
   function renderMonitor() {
     map = null;
     markers = {};
-    return head('المراقبة المباشرة', '') +
+    return head('المراقبة المباشرة', '<span class="live-pill"><i></i>مباشر</span>') +
+      '<div id="liveMap" class="map live"></div>' +
       '<div id="monStats" class="grid g4"></div>' +
-      '<div id="liveMap" class="map tall" style="margin-top:12px"></div>' +
       '<div class="card"><h3>الرحلات الجارية</h3>' +
       '<div class="tbl"><table><thead><tr><th>الرحلة</th><th>الحافلة</th><th>السائق</th><th>التقدم</th><th>المحطة القادمة</th><th>الركاب</th><th>آخر تحديث</th></tr></thead><tbody id="monBody"></tbody></table></div>' +
       '</div>';
@@ -613,29 +613,67 @@
       '<li>لا تُعرض <b>أرقام هواتف الطلاب</b> في أي شاشة من لوحة الإدارة أو في التقارير المصدّرة.</li>' +
       '<li>التقارير المصدّرة تحتوي على أعداد وإحصائيات مجمّعة (ركاب الخطوط، الالتزام بالمواعيد، تقييمات السائقين).</li>' +
       '<li>الرقم الجامعي في سجل المسح يُستخدم للتحقق من صلاحية الاشتراك فقط، ولا يُشارك مع أي طرف آخر.</li>' +
-      '<li>شكاوى الطلاب والاستغاثات تُعرض للإدارة فقط.</li>' +
+      '<li>شكاوى الطلاب تُعرض للإدارة فقط.</li>' +
       '</ul></div>';
   }
 
-  // ---------- SOS ----------
-  function renderSos() {
-    const el = $('#sos');
-    const list = (MB.state.sos || []).map((e, i) => ({ e, id: String(e.id != null ? e.id : i) })).filter((x) => !x.e.handled);
-    if (!list.length) { el.innerHTML = '<p class="sos-ok">لا توجد استغاثات نشطة</p>'; return; }
-    el.innerHTML = list.map(({ e, id }) => {
-      const t = e.tripId ? MB.trip(e.tripId) : null;
-      return '<div class="sos-item" role="alert"><b>استغاثة SOS</b>' +
-        '<span class="grow">الطالب: ' + esc(e.studentName || e.student || e.name || '—') + ' · الرحلة: ' + esc(t ? titleOf(t) : (e.tripId || '—')) + ' · الوقت: ' + (e.ts ? hhmm(e.ts) : '—') + '</span>' +
-        '<button class="btn sm" data-act="sosDone" data-id="' + esc(id) + '">تم التعامل</button></div>';
+  // ---------- KPI strip (always visible above the views) ----------
+  function kpiCard(tone, label, value, sub) {
+    return '<div class="kcard ' + tone + '"><div class="klabel">' + esc(label) + '</div><div class="kval">' + esc(value) + '</div><div class="ksub">' + esc(sub) + '</div></div>';
+  }
+
+  function renderKpis() {
+    const el = $('#kpis');
+    if (!el) return;
+    const s = MB.state;
+    const today = todayKey();
+    const live = tripsToday().filter((t) => t.published !== false && t.status !== 'cancelled');
+    const riders = live.reduce((a, t) => a + t.booked, 0);
+    const cap = live.reduce((a, t) => a + t.capacity, 0);
+    const occ = cap ? Math.round((riders / cap) * 100) : 0;
+    const active = s.trips.filter((t) => t.status === 'en_route').length;
+    const revenue = (s.payments || []).filter((p) => dayKey(p.ts) === today).reduce((a, p) => a + (+p.amount || 0), 0);
+    el.innerHTML = [
+      kpiCard('ok', 'رحلات نشطة', active, 'حافلات في الطريق الآن'),
+      kpiCard('info', 'ركاب اليوم', riders, 'حجوزات رحلات اليوم'),
+      kpiCard('warn', 'نسبة الإشغال', occ + '%', 'من إجمالي المقاعد اليوم'),
+      kpiCard('brand', 'الإيراد', revenue + ' ج.م', 'مدفوعات اليوم (محاكاة)'),
+    ].join('');
+  }
+
+  // ---------- trip chat (read-only oversight) ----------
+  const CHAT_WHO = { driver: 'السائق', student: 'طالب' };
+
+  function renderChat() {
+    const msgs = (MB.state.chat || []).slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    const groups = {};
+    msgs.forEach((m) => { (groups[m.tripId] = groups[m.tripId] || []).push(m); });
+    const ids = Object.keys(groups).sort((a, b) => {
+      const la = groups[a][groups[a].length - 1].ts || 0, lb = groups[b][groups[b].length - 1].ts || 0;
+      return lb - la;
+    });
+    const cards = ids.map((id) => {
+      const t = MB.trip(id);
+      const list = groups[id].map((m) => {
+        const cls = m.from === 'driver' ? 'drv' : 'stu';
+        return '<div class="chat-msg ' + cls + '"><span class="who">' + esc(CHAT_WHO[m.from] || 'غير معروف') + '</span>' +
+          '<span class="txt">' + esc(m.text) + '</span><span class="tm">' + (m.ts ? hhmm(m.ts) : '—') + '</span></div>';
+      }).join('');
+      return '<div class="card chat-card"><div class="chat-head"><h3 class="grow">' + esc(t ? titleOf(t) : 'رحلة ' + id) + '</h3>' +
+        '<span class="badge info">' + groups[id].length + ' رسالة</span></div><div class="chat-list">' + list + '</div></div>';
     }).join('');
+    return head('المحادثات', '<span class="badge info">للقراءة فقط</span>') +
+      '<p class="adm-note" style="margin:0 0 12px">محادثات الرحلات بين السائق والطلاب، مجمّعة حسب الرحلة، للمتابعة فقط ولا يمكن الرد منها.</p>' +
+      (ids.length ? cards : '<div class="card">' + empty('لا توجد محادثات على الرحلات بعد.') + '</div>');
   }
 
   // ---------- router & render ----------
   const VIEWS = {
+    monitor: { label: 'المراقبة المباشرة', render: renderMonitor },
     publish: { label: 'نشر الجدول', render: renderPublish },
     trips: { label: 'الرحلات', render: renderTrips },
     demand: { label: 'لوحة الطلب', render: renderDemand },
-    monitor: { label: 'المراقبة المباشرة', render: renderMonitor },
+    chat: { label: 'المحادثات', render: renderChat },
     subs: { label: 'الاشتراكات والتحصيل', render: renderSubs },
     reports: { label: 'التقارير', render: renderReports },
     complaints: { label: 'الشكاوى', render: renderComplaints },
@@ -651,14 +689,14 @@
 
   function go() {
     const h = (location.hash || '').slice(1);
-    cur = VIEWS[h] ? h : 'publish';
+    cur = VIEWS[h] ? h : 'monitor';
     document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === cur));
+    renderKpis();
     renderView();
-    renderSos();
   }
 
   function onState() {
-    renderSos();
+    renderKpis();
     if (cur === 'monitor') updateMonitor();
     else renderView();
   }
@@ -711,11 +749,6 @@
       renderView();
       toast('تم حفظ السياسات وستظهر للجميع');
     },
-    sosDone: ({ id }) => MB.update((s) => {
-      const list = s.sos || [];
-      const i = list.findIndex((x, k) => String(x.id != null ? x.id : k) === id);
-      if (i >= 0) list[i].handled = true;
-    }),
   };
 
   const CHANGES = {

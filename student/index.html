@@ -2,27 +2,12 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#e8590c">
 <title>Movia Bus - الطالب</title>
 <link rel="stylesheet" href="../shared/mb.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<style>
-  .opt{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:15px;color:var(--ink);margin:0;cursor:pointer}
-  .opt input{width:auto;margin:0}
-  .trip-row{padding:10px 0;border-bottom:1px solid var(--line)}
-  .trip-row:last-child{border-bottom:0}
-  .note{background:#fff3bf;color:#7a5200;border-radius:10px;padding:8px 10px;font-size:13px;margin-top:10px}
-  @media (prefers-color-scheme:dark){.note{background:#3d3210;color:#ffe08a}}
-  .chat{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:4px}
-  .msg{max-width:78%;padding:7px 10px;border-radius:12px;background:var(--line);font-size:14px;align-self:flex-start}
-  .msg.me{align-self:flex-end;background:var(--brand);color:#fff}
-  .kpi{font-size:24px}
-  .leaflet-container{font-family:inherit}
-  body.track .tabs{display:none}
-  .wrap>section:first-child{margin-top:0}
-  .bar{margin-top:6px}
-  .stars-row{display:flex;gap:4px}
-</style>
+<link rel="stylesheet" href="student.css">
 </head>
 <body>
 <header class="topbar">
@@ -37,8 +22,8 @@
 <nav class="tabs" id="tabs">
   <a href="#home" data-view="home">الرئيسية</a>
   <a href="#book" data-view="book">الحجز</a>
-  <a href="#map" data-view="map">الخريطة</a>
-  <a href="#alerts" data-view="alerts">الإشعارات <b id="unreadCount"></b></a>
+  <a href="#chat" data-view="chat">الشات<b class="tbadge" data-badge="chat" hidden></b></a>
+  <a href="#alerts" data-view="alerts">الإشعارات<b class="tbadge" data-badge="alerts" hidden></b></a>
   <a href="#support" data-view="support">الدعم</a>
 </nav>
 

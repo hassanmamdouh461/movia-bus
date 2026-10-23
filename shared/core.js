@@ -125,7 +125,6 @@
         { id: 'p3', ts: Date.now() - 7200000, studentName: 'منى إبراهيم', category: 'سلوك السائق', text: 'السائق تجاوز محطة بدون توقف.',   status: 'open', assignee: '' },
       ],
       ratings: [ { tripId: 't1', driverId: 'd1', stars: 5 }, { tripId: 't2', driverId: 'd2', stars: 4 } ],
-      sos: [],
       chat: [], // {id, tripId, from:'student'|'driver', text, ts}
       subscribers: [
         { id: 'u1', name: 'أحمد محمد',   studentId: '20231547', plan: 'شهري',  balance: 350, status: 'active', expires: '2026-11-20', scanned: true },
