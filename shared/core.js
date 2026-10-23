@@ -3,7 +3,7 @@
 
    Model (no stations): each route is a fixed path (polyline). The bus drives continuously along it.
    A student taps "Ready" -> shares a pickup location on/near the path (state.pickups). The driver sees
-   those anonymous pins live and acknowledges them ("تمام، هقف له"). The driver can't skip: the bus
+   those anonymous pins live as mandatory stops (status 'accepted' from the start). The driver can't skip: the bus
    always pauses at each pickup for a few seconds (boarding) and then continues. */
 (function () {
   const KEY = 'movia_state_v3';
@@ -136,7 +136,7 @@
         const p = p0 + d; if (p >= 0.97) return;
         const [lat, lng] = lerpAlong(polyOf(t), p);
         out.push({ id: 'pk' + n++, tripId: t.id, lat: lat + 0.0004, lng: lng + 0.0004, progress: p,
-          ts: Date.now() - (k + 1) * 40000, status: 'waiting', mine: false });
+          ts: Date.now() - (k + 1) * 40000, status: 'accepted', mine: false });
       });
     });
     return out;
@@ -245,8 +245,9 @@
       const id = 'pk' + Date.now().toString(36);
       this.update((s) => {
         s.pickups = s.pickups.filter((k) => !(k.tripId === tripId && k.mine));
-        s.pickups.push({ id, tripId, lat: sn.lat, lng: sn.lng, rawLat: lat, rawLng: lng, progress: sn.progress, ts: Date.now(), status: 'waiting', mine: true });
+        s.pickups.push({ id, tripId, lat: sn.lat, lng: sn.lng, rawLat: lat, rawLng: lng, progress: sn.progress, ts: Date.now(), status: 'accepted', mine: true });
       });
+      this.notify('السواق هيقف لك — جهّز نفسك', 'bus');
       return id;
     },
     cancelPickup(id) { this.update((s) => { s.pickups = s.pickups.filter((k) => k.id !== id); }); },

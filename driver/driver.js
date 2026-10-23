@@ -233,17 +233,17 @@
     const route = MB.R[trip.routeId];
     const pos = trip.status === 'en_route' ? MB.position(trip) : null;
     const reqs = pos ? aheadRequests(trip) : [];
-    const waitCount = MB.pickupsOf(trip.id, true).filter((k) => k.status === 'waiting').length;
+    const waitCount = MB.pickupsOf(trip.id, true).filter((k) => k.status === 'accepted').length;
     const boarding = reqs.find((r) => r.k.status === 'boarding');
-    const nearest = reqs.find((r) => r.k.status === 'waiting') || reqs.find((r) => r.k.status === 'accepted');
-    const hot = !!(nearest && nearest.k.status === 'waiting' && !boarding);
+    const nearest = reqs.find((r) => r.k.status === 'accepted') || reqs.find((r) => r.k.status === 'accepted');
+    const hot = !!(nearest && nearest.k.status === 'accepted' && !boarding);
     card.classList.toggle('hot', hot);
 
     if (boarding) {
       setNext('واقف للركوب', 'الطلاب بيركبوا دلوقتي', 'باقي ' + secsLeft(boarding.k) + ' ث',
         String(secsLeft(boarding.k)), 'ثانية');
     } else if (nearest) {
-      const isWait = nearest.k.status === 'waiting';
+      const isWait = nearest.k.status === 'accepted';
       setNext(isWait ? 'أقرب طلب ركوب' : 'أقرب موقف مؤكد',
         'طالب على بُعد ' + fmtDist(nearest.dist),
         isWait ? 'ينتظر · ' + waitCount + ' طلب نشط' : 'هتقف له',
@@ -286,7 +286,7 @@
       if (k.status === 'accepted') {
         return '<div class="req-row accepted">' +
           '<div class="req-info"><strong>طالب</strong>' +
-          '<span class="req-state acc">هتقف بعد ' + r.eta + ' دقيقة</span></div></div>';
+          '<span class="req-state acc">إجباري — هتقف بعد ' + r.eta + ' دقيقة · على بُعد ' + fmtDist(r.dist) + '</span></div></div>';
       }
       return '<div class="req-row waiting">' +
         '<div class="req-info"><strong>طالب</strong>' +
@@ -299,7 +299,7 @@
 
   /* subtle alert when a NEW waiting request shows up for one of this driver's trips */
   function checkNewRequests() {
-    const all = MB.state.pickups.filter((k) => k.status === 'waiting');
+    const all = MB.state.pickups.filter((k) => k.status === 'accepted');
     if (knownPickups === null) { knownPickups = new Set(all.map((k) => k.id)); return; }
     const myTrips = driverTrips().map((t) => t.id);
     const fresh = all.filter((k) => !knownPickups.has(k.id));
@@ -423,8 +423,6 @@
     };
 
     $('reqList').addEventListener('click', (e) => {
-      const a = e.target.closest('button[data-accept]');
-      if (a) { MB.acceptPickup(a.dataset.accept); toast('تم — هتقف للطالب على المسار'); }
     });
 
     $('quick').innerHTML = QUICK_REPLIES.map((q) =>
