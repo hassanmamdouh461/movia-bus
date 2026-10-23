@@ -669,17 +669,12 @@
 
   // ---------- router & render ----------
   const VIEWS = {
-    monitor: { label: 'المراقبة المباشرة', render: renderMonitor },
-    publish: { label: 'نشر الجدول', render: renderPublish },
-    trips: { label: 'الرحلات', render: renderTrips },
-    demand: { label: 'لوحة الطلب', render: renderDemand },
-    chat: { label: 'المحادثات', render: renderChat },
-    subs: { label: 'الاشتراكات والتحصيل', render: renderSubs },
-    reports: { label: 'التقارير', render: renderReports },
-    complaints: { label: 'الشكاوى', render: renderComplaints },
-    qr: { label: 'مسح QR', render: renderQr },
-    policies: { label: 'السياسات', render: renderPolicies },
-    privacy: { label: 'سياسة الخصوصية', render: renderPrivacy },
+    monitor: { label: 'المتابعة الحية للأسطول', render: renderMonitor },
+    publish: { label: 'جدول اليوم والرحلات', render: () => renderPublish() + '<div style="margin-top:18px">' + renderTrips() + '</div>' },
+    demand: { label: 'لوحة الطلب المباشر', render: renderDemand },
+    subs: { label: 'الاشتراكات وحماية الدخل', render: () => renderSubs() + '<div style="margin-top:18px">' + renderQr() + '</div>' },
+    complaints: { label: 'البلاغات والسياسات', render: () => renderComplaints() + '<div style="margin-top:18px">' + renderPolicies() + '</div><div style="margin-top:18px">' + renderPrivacy() + '</div>' },
+    reports: { label: 'التقارير والتصدير', render: renderReports },
   };
 
   function renderView() {

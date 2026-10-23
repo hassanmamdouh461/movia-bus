@@ -3,29 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#e8590c">
-<title>Movia Bus - الطالب</title>
-<link rel="stylesheet" href="../shared/mb.css">
+<meta name="theme-color" content="#165b40">
+<title>Movia Bus — واجهة الطالب</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="../shared/mb.css">
 <link rel="stylesheet" href="student.css">
 </head>
 <body>
 <header class="topbar">
-  <h1>Movia Bus · الطالب</h1>
-  <a class="switch" href="../index.html">الصفحة الرئيسية</a>
+  <div class="topbar-brand">
+    <span class="topbar-logo">M</span>
+    <span>Movia Bus</span>
+    <span class="topbar-role">واجهة الطالب</span>
+  </div>
+  <nav class="role-nav" aria-label="التنقل بين الواجهات">
+    <a href="../index.html">الرئيسية</a>
+    <a href="../student/" class="active">الطالب</a>
+    <a href="../driver/">السائق</a>
+    <a href="../admin/">الإدارة</a>
+  </nav>
 </header>
+
+<nav class="subnav" id="tabs" aria-label="أقسام الطالب">
+  <div class="subnav-inner">
+    <a href="#home" data-view="home" class="on">رحلتي والتتبع</a>
+    <a href="#book" data-view="book">حجز المواعيد</a>
+    <a href="#chat" data-view="chat">محادثة السائق <b class="tbadge" data-badge="chat" hidden></b></a>
+    <a href="#alerts" data-view="alerts">الإشعارات والبلاغات <b class="tbadge" data-badge="alerts" hidden></b></a>
+  </div>
+</nav>
 
 <main class="wrap" id="app">
   <p class="mute">جاري تحميل الصفحة...</p>
 </main>
-
-<nav class="tabs" id="tabs">
-  <a href="#home" data-view="home">الرئيسية</a>
-  <a href="#book" data-view="book">الحجز</a>
-  <a href="#chat" data-view="chat">الشات<b class="tbadge" data-badge="chat" hidden></b></a>
-  <a href="#alerts" data-view="alerts">الإشعارات<b class="tbadge" data-badge="alerts" hidden></b></a>
-  <a href="#support" data-view="support">الدعم</a>
-</nav>
 
 <script src="../shared/core.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>

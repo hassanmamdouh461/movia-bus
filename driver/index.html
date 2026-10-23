@@ -3,95 +3,101 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#e8590c">
-<title>Movia Bus - السائق</title>
+<meta name="theme-color" content="#165b40">
+<title>Movia Bus — واجهة السائق</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="../shared/mb.css">
 <link rel="stylesheet" href="driver.css">
 </head>
-<body class="driver-app">
-
-<h1 class="sr-only">Movia Bus · السائق</h1>
-
-<!-- floating top bar: online status pill + driver switch -->
-<div class="top-float">
-  <div class="status-pill" id="statusPill" data-state="off" role="status">
-    <span class="pulse" aria-hidden="true"></span>
-    <span id="statusText">غير متصل</span>
+<body>
+<header class="topbar">
+  <div class="topbar-brand">
+    <span class="topbar-logo">M</span>
+    <span>Movia Bus</span>
+    <span class="topbar-role">واجهة السائق</span>
+    <span class="status-pill" id="statusPill" data-state="off">
+      <span class="pulse"></span>
+      <span id="statusText">متصل</span>
+    </span>
   </div>
-  <select id="driverSel" aria-label="اختيار السائق"></select>
-</div>
-
-<!-- full-bleed map -->
-<div class="map" id="map" role="region" aria-label="خريطة الخط"></div>
-
-<!-- bottom sheet with the trip card -->
-<aside class="sheet" id="sheet" aria-label="تفاصيل الرحلة">
-  <button class="sheet-handle" id="sheetToggle" type="button" aria-expanded="true" aria-label="إظهار أو إخفاء التفاصيل"><span></span></button>
-
-  <div class="sheet-body">
-    <section class="trip-head">
-      <h2 id="tripTitle">جاري التحميل…</h2>
-      <p class="mute" id="tripMeta"></p>
-      <ol class="chain" id="chain"></ol>
-    </section>
-
-    <button class="btn big go-btn" id="btnMain" type="button" disabled>ابدأ الرحلة</button>
-    <p class="mute hint" id="hint"></p>
-
-    <section class="next-card" aria-live="polite">
-      <div>
-        <span class="mute" id="nextLabel">المحطة القادمة</span>
-        <strong class="next-name" id="nextName">—</strong>
-        <span class="chip" id="nextWait"></span>
-      </div>
-      <div class="eta-box">
-        <span class="eta-num" id="etaNum">—</span>
-        <span class="mute" id="etaUnit"></span>
-      </div>
-    </section>
-
-    <section class="stats" aria-label="إحصائيات اليوم">
-      <div class="stat"><b id="statTrips">0</b><span>رحلات اليوم</span></div>
-      <div class="stat"><b id="statPax">0</b><span>ركاب</span></div>
-      <div class="stat"><b id="statRating">—</b><span>تقييم</span></div>
-    </section>
-
-    <section class="card">
-      <h3>الطلب على المحطات</h3>
-      <p class="mute">عدد الطلاب المنتظرين في كل محطة (أعداد فقط)</p>
-      <div id="demandList"></div>
-    </section>
-
-    <section class="card skip-banner">
-      <h3>تخطي المحطات الفارغة</h3>
-      <div id="saveList"></div>
-    </section>
+  <div class="row">
+    <select id="driverSel" aria-label="اختيار السائق" style="width:auto;min-width:170px;padding:5px 10px;font-weight:700"></select>
+    <nav class="role-nav" aria-label="التنقل بين الواجهات">
+      <a href="../index.html">الرئيسية</a>
+      <a href="../student/">الطالب</a>
+      <a href="../driver/" class="active">السائق</a>
+      <a href="../admin/">الإدارة</a>
+    </nav>
   </div>
-</aside>
+</header>
 
-<!-- floating chat button -->
-<button class="chat-fab" id="chatFab" type="button" aria-label="فتح محادثة الرحلة" disabled>
-  <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
-  <span class="fab-badge" id="chatBadge" hidden>0</span>
-</button>
+<main class="wrap">
+  <div class="drv-grid">
+    <!-- Right Column: Primary Controls + Next Stop + Skip Empty Stops -->
+    <div>
+      <section class="card">
+        <div class="row" style="justify-content:space-between;align-items:flex-start">
+          <div>
+            <h2 id="tripTitle" style="margin:0 0 2px;font-size:19px">جاري التحميل…</h2>
+            <p class="mute" id="tripMeta" style="margin:0"></p>
+          </div>
+          <select id="tripSel" aria-label="اختيار رحلة السائق" style="width:auto;min-width:165px;padding:5px 10px;font-size:13px;font-weight:700"></select>
+        </div>
 
-<!-- full-screen chat -->
-<section class="chat-screen" id="chatScreen" role="dialog" aria-modal="true" aria-label="محادثة الرحلة" hidden>
-  <header class="chat-head">
-    <button class="btn sec sm" id="chatClose" type="button">رجوع</button>
-    <div class="grow">
-      <h2>محادثة الرحلة</h2>
-      <p class="mute" id="chatSub"></p>
+        <ol class="chain" id="chain"></ol>
+
+        <button class="btn big go-btn" id="btnMain" type="button">ابدأ الرحلة</button>
+        <p class="mute hint" id="hint"></p>
+
+        <div class="next-card">
+          <div>
+            <span class="mute" id="nextLabel">المحطة القادمة</span>
+            <strong class="next-name" id="nextName">—</strong>
+            <span class="badge info" id="nextWait" style="margin-top:4px"></span>
+          </div>
+          <div class="eta-box">
+            <span class="eta-num" id="etaNum">—</span>
+            <span class="mute" id="etaUnit"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card skip-banner">
+        <h3>كارت «وفّر وقت» — تخطي المحطات الفاضية</h3>
+        <div id="saveList"></div>
+      </section>
+
+      <section class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h3 style="margin:0">شات الرحلة (بدون مكالمات هاتفية)</h3>
+          <span class="badge info" id="chatSub"></span>
+        </div>
+        <div class="msg-list" id="chatList"></div>
+        <div class="quick-row" id="quick"></div>
+        <div class="chat-input">
+          <input id="chatIn" type="text" maxlength="200" placeholder="اكتب رسالة للطلاب..." autocomplete="off">
+          <button class="btn" id="chatSend" type="button">إرسال</button>
+        </div>
+      </section>
     </div>
-  </header>
-  <div class="msg-list" id="chatList" aria-live="polite"></div>
-  <div class="quick-row" id="quick" aria-label="ردود سريعة"></div>
-  <div class="chat-input">
-    <input id="chatIn" type="text" maxlength="200" placeholder="اكتب رسالة…" aria-label="اكتب رسالة" autocomplete="off">
-    <button class="btn send-btn" id="chatSend" type="button">إرسال</button>
+
+    <!-- Left Column: Live Route Map + Station Demand Counts -->
+    <div>
+      <section class="card" style="padding:12px">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h3 style="margin:0">خريطة الطلب على المحطات</h3>
+          <span class="mute">يُعرض عدد المنتظرين فقط حفاظاً على الخصوصية</span>
+        </div>
+        <div class="map" id="map" style="height:330px;margin:0"></div>
+      </section>
+
+      <section class="card">
+        <h3>أعداد الطلاب المنتظرين في كل محطة</h3>
+        <div id="demandList"></div>
+      </section>
+    </div>
   </div>
-</section>
+</main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="../shared/core.js"></script>

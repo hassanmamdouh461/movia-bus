@@ -3,19 +3,142 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Movia Bus — نسخة العرض</title>
+<title>Movia Bus — منظومة النقل الجامعي</title>
 <link rel="stylesheet" href="shared/mb.css">
+<style>
+  body { background: var(--bg); }
+  .landing { max-width: 780px; margin: 0 auto; padding: 36px 16px 56px; }
+  .hero-box {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 18px;
+  }
+  .hero-top {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .hero-brand { display: flex; align-items: center; gap: 12px; }
+  .hero-logo {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: var(--brand); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 19px;
+  }
+  .hero-title h1 { margin: 0; font-size: 24px; font-weight: 800; color: var(--ink); }
+  .hero-title p { margin: 2px 0 0; color: var(--mute); font-size: 14px; }
+  .roles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .role-card {
+    display: flex; flex-direction: column; justify-content: space-between;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px;
+    transition: border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+  }
+  .role-card:hover {
+    border-color: var(--brand);
+    box-shadow: var(--sh-md);
+    transform: translateY(-2px);
+  }
+  .role-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--brand-soft); color: var(--brand);
+    font-weight: 800; font-size: 14px; margin-bottom: 12px;
+  }
+  .role-card h2 { margin: 0 0 6px; font-size: 18px; font-weight: 800; color: var(--ink); }
+  .role-card p { margin: 0 0 16px; color: var(--mute); font-size: 13.5px; line-height: 1.55; }
+  .role-enter {
+    display: inline-flex; align-items: center; justify-content: space-between;
+    font-size: 13.5px; font-weight: 700; color: var(--brand);
+    padding-top: 12px; border-top: 1px solid var(--line);
+  }
+  .foot-bar {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 16px; font-size: 13.5px; color: var(--mute);
+  }
+</style>
 </head>
 <body>
-<div class="wrap" style="max-width:560px;padding-top:40px">
-  <h1 style="margin:0 0 4px">🚌 Movia Bus</h1>
-  <p class="mute">نظام إدارة وتتبع حافلات نقل الطلاب — نسخة العرض التجريبية (بيانات افتراضية)</p>
-  <a class="card" href="student/" style="display:block"><h2>🎓 الطالب</h2><span class="mute">تتبع الحافلة، الحجز، الإشعارات والشات مع السائق</span></a>
-  <a class="card" href="driver/" style="display:block"><h2>🧑‍✈️ السائق</h2><span class="mute">ابدأ/أنهِ الرحلة، خريطة الطلب، تخطي المحطات الفارغة</span></a>
-  <a class="card" href="admin/" style="display:block"><h2>🧭 الإدارة</h2><span class="mute">نشر الجدول، لوحة الطلب، المتابعة الحية، التقارير</span></a>
-  <p class="mute">افتح الواجهات في تبويبات منفصلة: أي تغيير يظهر فورًا في الباقي. <a href="#" id="reset" style="text-decoration:underline">إعادة ضبط البيانات</a></p>
+<div class="landing">
+  <div class="hero-box">
+    <div class="hero-top">
+      <div class="hero-brand">
+        <div class="hero-logo">M</div>
+        <div class="hero-title">
+          <h1>Movia Bus</h1>
+          <p>نظام إدارة وتتبع حافلات نقل طلاب الجامعة — نسخة العرض التجريبية</p>
+        </div>
+      </div>
+      <span class="badge ok" id="liveSummary">بيانات العرض جاهزة</span>
+    </div>
+    <p class="mute" style="margin: 8px 0 0">
+      اختر أي واجهة بالأسفل لتجربة النظام مباشرة. جميع الواجهات الثلاث متزامنة لحظياً؛ أي إجراء في واجهة السائق أو الإدارة ينعكس فوراً عند الطالب.
+    </p>
+  </div>
+
+  <div class="roles-grid">
+    <a class="role-card" href="student/">
+      <div>
+        <span class="role-num">1</span>
+        <h2>واجهة الطالب</h2>
+        <p>تتبع الحافلة على الخريطة، وقت الوصول المتوقع، زر الجاهزية Ready، حجز المقاعد، مشاركة الرحلة مع الأهل، والشات مع السائق.</p>
+      </div>
+      <span class="role-enter"><span>دخول واجهة الطالب</span><span>←</span></span>
+    </a>
+
+    <a class="role-card" href="driver/">
+      <div>
+        <span class="role-num">2</span>
+        <h2>واجهة السائق</h2>
+        <p>تشغيل مبسط بزرين فقط (ابدأ / أنهِ الرحلة)، خريطة أعداد المنتظرين على المحطات، كارت تخطي المحطات الفارغة، وشات الرحلة.</p>
+      </div>
+      <span class="role-enter"><span>دخول واجهة السائق</span><span>←</span></span>
+    </a>
+
+    <a class="role-card" href="admin/">
+      <div>
+        <span class="role-num">3</span>
+        <h2>لوحة الإدارة</h2>
+        <p>مراجعة ونشر جدول اليوم، لوحة الطلب المباشر، المتابعة الحية للأسطول، إدارة الاشتراكات، البلاغات، وتقارير PDF/CSV.</p>
+      </div>
+      <span class="role-enter"><span>دخول لوحة الإدارة</span><span>←</span></span>
+    </a>
+  </div>
+
+  <div class="foot-bar">
+    <span>فريق العمل: حسن ممدوح · محمد شحاته · أحمد عصام · عبدالله جمال · مولر باسم · كيرلس سمير</span>
+    <button class="btn sec sm" id="reset" type="button">إعادة ضبط البيانات الافتراضية</button>
+  </div>
 </div>
+
 <script src="shared/core.js"></script>
-<script>document.getElementById('reset').onclick=function(e){e.preventDefault();MB.reset();alert('تمت إعادة ضبط البيانات')}</script>
+<script>
+  (function () {
+    function updateInfo() {
+      var active = MB.state.trips.filter(function (t) { return t.status === 'en_route'; }).length;
+      var total = MB.state.trips.length;
+      document.getElementById('liveSummary').textContent = active + ' حافلات في الطريق الآن · ' + total + ' رحلة مجدولة';
+    }
+    updateInfo();
+    document.getElementById('reset').onclick = function () {
+      MB.reset();
+      updateInfo();
+      var t = document.createElement('div');
+      t.className = 'toast';
+      t.textContent = 'تمت إعادة ضبط البيانات الافتراضية بنجاح';
+      document.body.appendChild(t);
+      setTimeout(function () { t.remove(); }, 2500);
+    };
+  })();
+</script>
 </body>
 </html>
