@@ -199,22 +199,15 @@
     }
   }
 
+  // the chat belongs to the trip I'm registered in; it opens only once that trip's driver starts it
+  function chatTrip(s) {
+    const b = activeGoBooking(s);
+    return b ? trip(b.tripId) : null;
+  }
   function chatMsgs(s, tid) { return s.chat.filter((c) => c.tripId === tid).sort((a, b) => a.ts - b.ts); }
   function unreadChat(s) {
     const since = s.me.chatReadTs || 0;
     return s.chat.filter((c) => c.from === 'driver' && c.ts > since).length;
-  }
-
-  function seedChat(s) {
-    const t = pickActive(s);
-    if (!t || s.chat.some((c) => c.tripId === t.id)) return;
-    const who = firstName(s.me.name) || 'أحمد';
-    const n = now();
-    [
-      ['driver', 'أهلاً يا ' + who + '، أنا الكابتن ' + drvFirst(t) + '. الحافلة في المسار وموعدنا مضبوط.', n - 14 * 60000],
-      ['student', 'تمام يا كابتن، أنا منتظر في مكاني على المسار.', n - 11 * 60000],
-      ['driver', 'تمام، لما تضغط Ready وتحدد مكانك هشوفه على الخريطة.', n - 8 * 60000],
-    ].forEach(([from, text, ts]) => s.chat.push({ id: uid('c'), tripId: t.id, from, text, ts }));
   }
 
   function ensure(s) {
@@ -226,7 +219,6 @@
     ['myBookings', 'sharedLinks', 'notifications', 'reports', 'chat', 'pickups'].forEach((k) => {
       if (!Array.isArray(s[k])) s[k] = [];
     });
-    seedChat(s);
   }
 
   function book(s, t, msg) {
@@ -382,7 +374,8 @@
   function sendChat(tid, text) {
     const raw = text == null ? (draft.chat[tid] || '') : text;
     const txt = String(raw).trim();
-    if (!txt || !trip(tid)) return;
+    const ct = chatTrip(MB.state);
+    if (!txt || !ct || ct.id !== tid || ct.status !== 'en_route') return;
     MB.update((st) => st.chat.push({ id: uid('c'), tripId: tid, from: 'student', text: txt.slice(0, 300), ts: now() }));
     draft.chat[tid] = '';
     const input = document.getElementById('chatInput');
@@ -621,11 +614,18 @@
   }
 
   function chatView(s) {
-    const t = pickActive(s);
-    if (!t) return '<div class="card"><h3>لا توجد رحلة نشطة للمحادثة</h3></div>';
+    const t = chatTrip(s);
+    if (!t) {
+      return '<div class="chat-card-wrap"><section class="card"><h3>المحادثة مع السائق</h3>' +
+        '<p class="mute" style="margin:0">سجّل في رحلة ذهاب من «رحلتي والتتبع» عشان تقدر تتواصل مع سائقها.</p></section></div>';
+    }
     const drv = MB.drv[t.driverId] || { name: '—' };
     const bus = MB.bus[t.busId] || { plate: '—' };
     const msgs = chatMsgs(s, t.id);
+    const open = t.status === 'en_route';
+    const lockMsg = t.status === 'arrived' ? 'الرحلة انتهت — المحادثة مقفولة.'
+      : t.status === 'cancelled' ? 'الرحلة اتلغت — المحادثة مقفولة.'
+        : 'المحادثة هتفتح أول ما السائق يبدأ الرحلة.';
 
     return '<div class="chat-card-wrap">' +
       '<section class="card">' +
@@ -640,15 +640,17 @@
         '<div class="chat-list" id="chatList">' +
           (msgs.length
             ? msgs.map((c) => '<div class="bub-row ' + (c.from === 'student' ? 'me' : 'drv') + '"><div class="bub">' + esc(c.text) + '</div><div class="bub-ts">' + (c.from === 'student' ? 'أنت · ' : 'السائق · ') + esc(MB.fmtTime(c.ts)) + '</div></div>').join('')
-            : '<div class="mute" style="margin:auto;text-align:center">ابدأ المحادثة مع السائق أو اختر رداً سريعاً بالأسفل.</div>') +
+            : '<div class="mute" style="margin:auto;text-align:center">' + (open ? 'ابدأ المحادثة مع السائق أو اختر رداً سريعاً بالأسفل.' : esc(lockMsg)) + '</div>') +
         '</div>' +
-        '<div class="chips">' +
-          QUICK_REPLIES.map((q) => '<button class="chip" type="button" data-act="chip" data-trip="' + t.id + '" data-text="' + esc(q) + '">' + esc(q) + '</button>').join('') +
-        '</div>' +
-        '<div class="chat-input-row">' +
-          '<input id="chatInput" data-field="chat-text" data-trip="' + t.id + '" value="' + esc(draft.chat[t.id] || '') + '" placeholder="اكتب رسالة للسائق بدون الحاجة للاتصال الهاتفي..." autocomplete="off">' +
-          '<button class="btn" type="button" data-act="chat-send" data-trip="' + t.id + '">إرسال</button>' +
-        '</div>' +
+        (open
+          ? '<div class="chips">' +
+              QUICK_REPLIES.map((q) => '<button class="chip" type="button" data-act="chip" data-trip="' + t.id + '" data-text="' + esc(q) + '">' + esc(q) + '</button>').join('') +
+            '</div>' +
+            '<div class="chat-input-row">' +
+              '<input id="chatInput" data-field="chat-text" data-trip="' + t.id + '" value="' + esc(draft.chat[t.id] || '') + '" placeholder="اكتب رسالة للسائق بدون الحاجة للاتصال الهاتفي..." autocomplete="off">' +
+              '<button class="btn" type="button" data-act="chat-send" data-trip="' + t.id + '">إرسال</button>' +
+            '</div>'
+          : (msgs.length ? '<div class="mute" style="text-align:center;padding:10px 0 2px">' + esc(lockMsg) + '</div>' : '')) +
       '</section>' +
     '</div>';
   }
