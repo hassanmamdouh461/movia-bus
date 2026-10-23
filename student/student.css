@@ -200,10 +200,11 @@ body.track .subnav {
 }
 
 .eta-big small {
+  display: inline-block;
   font-size: 12.5px;
   font-weight: 700;
   color: var(--mute);
-  margin-inline-start: 4px;
+  margin-inline-start: 6px;
 }
 
 /* Stepper */
@@ -509,9 +510,23 @@ body.track .subnav {
 /* Responsive adjustments */
 @media (max-width: 860px) {
   .home-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
+
+  .home-col {
+    display: contents;
+  }
+
+  .home-grid .card {
+    margin-bottom: 0;
+  }
+
+  .m-order-1 { order: 1; }
+  .m-order-2 { order: 2; }
+  .m-order-3 { order: 3; }
+  .m-order-4 { order: 4; }
 }
 
 @media (max-width: 680px) {

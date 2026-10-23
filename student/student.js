@@ -133,14 +133,14 @@
   function etaBigHtml(t) {
     if (t.status === 'en_route') {
       const info = etaInfo(t);
-      if (info.kind === 'min') return (info.m <= 1 ? 1 : info.m) + '<small>دقيقة</small>';
-      if (info.kind === 'now') return 'الآن<small>اركب الآن</small>';
-      if (info.kind === 'skipped') return 'مش هيقف<small>السواق معتذر</small>';
-      return 'مرت<small>الحافلة عدّت مكانك</small>';
+      if (info.kind === 'min') return (info.m <= 1 ? 1 : info.m) + ' <small>دقيقة</small>';
+      if (info.kind === 'now') return 'الآن <small>اركب الآن</small>';
+      if (info.kind === 'skipped') return 'مش هيقف <small>السواق معتذر</small>';
+      return 'مرت <small>الحافلة عدّت مكانك</small>';
     }
-    if (t.status === 'scheduled') return esc(t.time) + '<small>موعد الانطلاق</small>';
-    if (t.status === 'at_start') return 'الآن<small>في بداية الخط</small>';
-    if (t.status === 'arrived') return 'وصلت<small>انتهت الرحلة</small>';
+    if (t.status === 'scheduled') return esc(t.time) + ' <small>موعد الانطلاق</small>';
+    if (t.status === 'at_start') return 'الآن <small>في بداية الخط</small>';
+    if (t.status === 'arrived') return 'وصلت <small>انتهت الرحلة</small>';
     return '—';
   }
   function stepperHtml(t) {
@@ -455,9 +455,25 @@
     ).join('');
 
     return '<div class="home-grid">' +
-      /* Right Column: Active Trip Details & Actions */
-      '<div>' +
-        '<section class="card">' +
+      /* Primary Column: Live Map at the Top & ETAs */
+      '<div class="home-col">' +
+        '<section class="card map-card m-order-1">' +
+          '<div class="map-head">' +
+            '<h3 style="margin:0">الخريطة الحية ومسار الحافلة</h3>' +
+            '<select data-field="map-trip" aria-label="اختر الرحلة المعروضة">' + tripSelectorOpts + '</select>' +
+          '</div>' +
+          '<div id="mapBox" class="map-box"></div>' +
+        '</section>' +
+
+        '<section class="card m-order-4">' +
+          '<h3>وقت الوصول المتوقع</h3>' +
+          etaRowsHtml(t) +
+        '</section>' +
+      '</div>' +
+
+      /* Secondary Column: Active Trip Details & Actions */
+      '<div class="home-col">' +
+        '<section class="card m-order-2">' +
           '<div class="tc-top">' +
             '<span class="avatar">' + esc(drvInitial(t)) + '</span>' +
             '<div class="grow">' +
@@ -502,7 +518,7 @@
 
         /* 1.4 Missed Trip / Instant Alternative Card */
         (altTrip
-          ? '<section class="card">' +
+          ? '<section class="card m-order-3">' +
               '<div class="row">' +
                 '<div class="grow">' +
                   '<h3 style="margin:0 0 2px">' + esc(altTitle) + '</h3>' +
@@ -512,22 +528,6 @@
               '</div>' +
             '</section>'
           : '') +
-      '</div>' +
-
-      /* Left Column: Live Map & ETAs */
-      '<div>' +
-        '<section class="card map-card">' +
-          '<div class="map-head">' +
-            '<h3 style="margin:0">الخريطة الحية ومسار الحافلة</h3>' +
-            '<select data-field="map-trip" aria-label="اختر الرحلة المعروضة">' + tripSelectorOpts + '</select>' +
-          '</div>' +
-          '<div id="mapBox" class="map-box"></div>' +
-        '</section>' +
-
-        '<section class="card">' +
-          '<h3>وقت الوصول المتوقع</h3>' +
-          etaRowsHtml(t) +
-        '</section>' +
       '</div>' +
     '</div>';
   }

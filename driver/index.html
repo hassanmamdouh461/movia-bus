@@ -33,9 +33,28 @@
 
 <main class="wrap">
   <div class="drv-grid">
-    <!-- Right Column: Primary Controls + Next Up request + inline chat -->
-    <div>
-      <section class="card">
+    <!-- Primary Column: Live Route Map + Ready requests -->
+    <div class="drv-col">
+      <section class="card m-order-1" style="padding:12px">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h3 style="margin:0">خريطة المسار والطلبات</h3>
+          <span class="mute" style="font-size:12.5px">الطلاب بيظهروا بشكل مجهول حفاظاً على الخصوصية</span>
+        </div>
+        <div class="map drv-map" id="map"></div>
+      </section>
+
+      <section class="card m-order-3">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h3 style="margin:0">طلبات الركوب</h3>
+          <span class="badge info" id="reqCount">0</span>
+        </div>
+        <div id="reqList" class="req-list"></div>
+      </section>
+    </div>
+
+    <!-- Secondary Column: Primary Controls + Next Up request + inline chat -->
+    <div class="drv-col">
+      <section class="card m-order-2">
         <div class="row drv-trip-head">
           <div class="grow">
             <h2 id="tripTitle" style="margin:0 0 2px;font-size:18px">جاري التحميل…</h2>
@@ -62,7 +81,7 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card m-order-4">
         <div class="row" style="justify-content:space-between;margin-bottom:8px">
           <h3 style="margin:0">شات الرحلة (بدون مكالمات هاتفية)</h3>
           <span class="badge info" id="chatSub"></span>
@@ -73,25 +92,6 @@
           <input id="chatIn" type="text" maxlength="200" placeholder="اكتب رسالة للطلاب..." autocomplete="off">
           <button class="btn" id="chatSend" type="button">إرسال</button>
         </div>
-      </section>
-    </div>
-
-    <!-- Left Column: Live Route Map + Ready requests -->
-    <div>
-      <section class="card" style="padding:12px">
-        <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <h3 style="margin:0">خريطة المسار والطلبات</h3>
-          <span class="mute" style="font-size:12.5px">الطلاب بيظهروا بشكل مجهول حفاظاً على الخصوصية</span>
-        </div>
-        <div class="map drv-map" id="map"></div>
-      </section>
-
-      <section class="card">
-        <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <h3 style="margin:0">طلبات الركوب</h3>
-          <span class="badge info" id="reqCount">0</span>
-        </div>
-        <div id="reqList" class="req-list"></div>
       </section>
     </div>
   </div>

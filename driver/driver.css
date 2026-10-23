@@ -391,9 +391,23 @@ body {
 /* Responsive Breakpoints */
 @media (max-width: 860px) {
   .drv-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
+
+  .drv-col {
+    display: contents;
+  }
+
+  .drv-grid .card {
+    margin-bottom: 0;
+  }
+
+  .m-order-1 { order: 1; }
+  .m-order-2 { order: 2; }
+  .m-order-3 { order: 3; }
+  .m-order-4 { order: 4; }
 }
 
 @media (max-width: 680px) {
