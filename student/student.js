@@ -9,7 +9,7 @@
   const KIND_LABEL = { bus: 'اقتراب الحافلة', driver: 'تحديث السائق', cancel: 'إلغاء وبديل', booking: 'تأكيد حجز', info: 'إشعار' };
   const KIND_CLS = { bus: 'info', driver: 'ok', cancel: 'bad', booking: 'ok', info: '' };
   const BOOK_STATUS = { confirmed: 'مؤكد', cancelled: 'ملغي', missed: 'فاتتك الرحلة', trip_cancelled: 'ألغيت الرحلة' };
-  const VIEWS = ['home', 'book', 'chat', 'alerts'];
+  const VIEWS = ['home', 'chat', 'alerts'];
   const QUICK_REPLIES = ['أنا منتظر في مكاني', 'كم دقيقة للوصول؟', 'تمام يا كابتن شكراً'];
   // pickup (Ready) status -> chip text / badge class
   const PK_LABEL = {
@@ -525,7 +525,7 @@
   function renderHomeView(s) {
     const t = pickActive(s);
     if (!t) {
-      return '<div class="card"><h3>لا توجد رحلات حالياً</h3><a class="btn" href="#book">احجز رحلة الآن</a></div>';
+      return '<div class="card"><h3>لا توجد رحلات حالياً</h3></div>';
     }
     const dir = draft.dir || 'go';
     const drv = MB.drv[t.driverId] || { name: '—' };
@@ -593,7 +593,6 @@
           '<div class="actions-grid">' +
             '<button class="act-btn" type="button" data-act="share" data-trip="' + t.id + '">مشاركة التتبع مع الأهل</button>' +
             '<a class="act-btn" href="#chat">مراسلة السائق بالشات</a>' +
-            '<a class="act-btn" href="#book">حجز أو تعديل موعد</a>' +
           '</div>' +
 
           (lastLink
@@ -619,65 +618,6 @@
           : '') +
       '</div>' +
     '</div>';
-  }
-
-  function bookView(s) {
-    const rid = draft.route;
-    const route = MB.R[rid];
-    const actGo = activeGoBooking(s);
-    const trips = s.trips.filter((t) => t.routeId === rid && t.status !== 'cancelled').sort((a, b) => a.scheduledAt - b.scheduledAt);
-    const tabs = MB.routes.map((x) =>
-      '<button class="btn ' + (x.id === rid ? '' : 'sec') + '" type="button" data-act="route" data-route="' + x.id + '">' + esc(x.name) + '</button>'
-    ).join(' ');
-
-    function returnRowHtml(t) {
-      return '<div class="trip-row">' +
-        '<div class="grow"><b>الساعة ' + esc(t.time) + '</b> · ' + statusBadge(t) + '<div class="meta">حافلة ' + esc(MB.bus[t.busId].plate) + ' · من الجامعة</div></div>' +
-      '</div>';
-    }
-
-    function tripRowHtml(t) {
-      const mine = bookingFor(s, t.id);
-      const missedHere = mine && isBookingMissed(s, mine);
-      const activeHere = mine && !missedHere;
-      let action;
-      if (activeHere) {
-        action = '<div class="row"><span class="badge ok">مسجل · مقعد ' + mine.seat + '</span>' +
-          '<button class="btn sec sm" type="button" data-act="cancel-booking" data-id="' + mine.id + '">إلغاء التسجيل</button></div>';
-      } else if (missedHere) {
-        action = '<span class="badge bad">فاتك الموعد</span>';
-      } else if (t.status !== 'scheduled' && t.status !== 'at_start') {
-        action = statusBadge(t);
-      } else {
-        action = '<button class="btn ' + (actGo ? 'sec sm' : 'sm') + '" type="button" data-act="book" data-trip="' + t.id + '">تسجيل في الرحلة</button>';
-      }
-
-      return '<div class="trip-row">' +
-        '<div class="grow"><b>الساعة ' + esc(t.time) + '</b> · ' + statusBadge(t) + '<div class="meta">' + seatPill(t) + ' · حافلة ' + esc(MB.bus[t.busId].plate) + '</div></div>' +
-        action +
-      '</div>';
-    }
-
-    const myRows = s.myBookings.filter((b) => b.status === 'confirmed' && !isBookingMissed(s, b)).map((b) => {
-      const t = trip(b.tripId);
-      if (!t) return '';
-      return '<div class="trip-row">' +
-        '<div class="grow"><b>' + esc(label(t)) + '</b><div class="mute">مقعد رقم ' + b.seat + ' · ' + esc(BOOK_STATUS[b.status] || b.status) + '</div></div>' +
-        '<button class="btn sec sm" type="button" data-act="cancel-booking" data-id="' + b.id + '">إلغاء التسجيل</button>' +
-      '</div>';
-    }).join('');
-
-    return '<div class="card">' +
-        '<div class="row" style="justify-content:space-between">' +
-          '<div><h2 style="margin:0 0 4px">حجز المقاعد</h2><div class="mute">' + esc('من ' + route.fromName + ' → إلى ' + route.toName) + '</div></div>' +
-          '<div class="row route-tabs">' + tabs + '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="grid g2">' +
-        '<section class="card"><h3>رحلات الذهاب للجامعة</h3>' + (trips.filter((t) => t.direction === 'go').map(tripRowHtml).join('') || '<p class="mute">لا توجد رحلات ذهاب</p>') + '</section>' +
-        '<section class="card"><h3>مواعيد العودة من الجامعة</h3><p class="mute" style="margin:0 0 8px">من غير حجز — الباصات واقفة وبتتحرك في المواعيد اللي بتحددها الإدارة.</p>' + (trips.filter((t) => t.direction === 'back').map(returnRowHtml).join('') || '<p class="mute">لا توجد رحلات عودة</p>') + '</section>' +
-      '</div>' +
-      '<section class="card"><h3>حجوزاتي المؤكدة</h3>' + (myRows || '<p class="mute">لا توجد حجوزات مؤكدة حالياً.</p>') + '</section>';
   }
 
   function chatView(s) {
@@ -877,8 +817,6 @@
       app.innerHTML = trackView(s, r.id);
       const t = trip(r.id) || pickActive(s);
       if (t) mountMap(t.id);
-    } else if (r.view === 'book') {
-      app.innerHTML = bookView(s);
     } else if (r.view === 'chat') {
       app.innerHTML = chatView(s);
       const list = document.getElementById('chatList');
