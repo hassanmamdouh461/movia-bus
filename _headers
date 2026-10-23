@@ -1,5 +1,5 @@
 /*
   X-Content-Type-Options: nosniff
-  Referrer-Policy: same-origin
+  Referrer-Policy: strict-origin-when-cross-origin
 /shared/*
   Cache-Control: public, max-age=300
