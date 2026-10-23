@@ -511,56 +511,6 @@
       (list.length ? table(['التاريخ', 'الطالب', 'الفئة', 'نص الشكوى', 'الحالة', 'المسؤول', 'إجراء'], rows) : empty('لا توجد شكاوى في هذه الفئة.')) + '</div>';
   }
 
-  // ---------- 3.8 QR boarding (تسجيل الركوب) ----------
-  function validateScan(raw) {
-    const id = String(raw || '').trim();
-    if (!id) return { ok: false, name: '—', reason: 'أدخل الرقم الجامعي أو امسح البطاقة' };
-    const st = MB.state.students.find((x) => x.studentId === id);
-    if (!st) return { ok: false, name: '—', reason: 'الرقم الجامعي غير مسجّل' };
-    if (st.status !== 'active') return { ok: false, name: st.name, reason: 'الطالب غير مفعّل' };
-    return { ok: true, name: st.name, reason: st.scanned ? 'صالح (سبق تسجيل مسحه)' : 'صالح' };
-  }
-
-  function doScan(raw) {
-    const r = validateScan(raw);
-    const id = String(raw || '').trim();
-    const entry = { id: 'q' + Date.now(), ts: Date.now(), studentId: id || '—', name: r.name, ok: r.ok, reason: r.reason };
-    lastScan = entry;
-    MB.update((s) => {
-      if (r.ok) {
-        const st = s.students.find((x) => x.studentId === id);
-        if (st) st.scanned = true;
-      }
-      s.scanLog = s.scanLog || [];
-      s.scanLog.unshift(entry);
-      if (s.scanLog.length > 100) s.scanLog.length = 100;
-    });
-    toast((r.ok ? 'مقبول: ' : 'مرفوض: ') + r.name + ' - ' + r.reason, !r.ok);
-  }
-
-  function renderQr() {
-    const list = MB.state.students || [];
-    const scanned = list.filter((x) => x.scanned).length;
-    const activeN = list.filter((x) => x.status === 'active').length;
-    const res = lastScan
-      ? '<div class="scan-res ' + (lastScan.ok ? 'ok' : 'bad') + '"><b>' + (lastScan.ok ? 'مقبول' : 'مرفوض') + '</b> · ' + esc(lastScan.name) + ' — ' + esc(lastScan.reason) + '</div>'
-      : empty('لم يتم أي مسح بعد.');
-    const log = (MB.state.scanLog || []).slice(0, 15).map((e) => '<tr><td>' + hhmmss(e.ts) + '</td><td>' + esc(e.name) + '</td><td>' + esc(e.studentId) + '</td><td>' + (e.ok ? '<span class="badge ok">مقبول</span>' : '<span class="badge bad">مرفوض</span>') + ' ' + esc(e.reason) + '</td></tr>').join('');
-    const rows = list.map((x) => '<tr><td>' + esc(x.name) + '</td><td>' + esc(x.studentId) + '</td>' +
-      '<td>' + (x.status === 'active' ? '<span class="badge ok">مفعّل</span>' : '<span class="badge bad">غير مفعّل</span>') + '</td>' +
-      '<td>' + (x.scanned ? '<span class="badge ok">نعم</span>' : '<span class="badge warn">لا</span>') + '</td></tr>').join('');
-    return head('تسجيل الركوب (QR)', '') +
-      '<div class="grid g4">' + kpi('الطلاب المسجّلون', list.length) + kpi('مفعّلون', activeN) + kpi('تم مسحهم اليوم', scanned) + kpi('لم يُمسحوا', list.length - scanned) + '</div>' +
-      '<div class="grid g2" style="margin-top:12px">' +
-      '<div class="card"><h3>محاكاة المسح</h3><label for="qrId">الرقم الجامعي</label>' +
-      '<div class="row"><input id="qrId" class="grow" placeholder="مثال: 20231547" inputmode="numeric"></div>' +
-      '<div class="row" style="margin-top:10px"><button class="btn" data-act="qrScan">مسح وتحقق</button><button class="btn sec" data-act="qrRandom">مسح عشوائي (محاكاة)</button></div>' +
-      '<div style="margin-top:12px">' + res + '</div></div>' +
-      '<div class="card"><h3>سجل المسح</h3>' + (log ? table(['الوقت', 'الطالب', 'الرقم الجامعي', 'النتيجة'], log) : empty('السجل فارغ.')) + '</div>' +
-      '</div>' +
-      '<div class="card" style="margin-top:12px"><h3>الطلاب المسجّلون</h3>' + table(['الاسم', 'الرقم الجامعي', 'الحالة', 'تم المسح اليوم'], rows) + '</div>';
-  }
-
   // ---------- 3.10 policies ----------
   function renderPolicies() {
     if (!polDraft) polDraft = { lastReturn: MB.state.policies.lastReturn, rules: MB.state.policies.rules.slice() };
@@ -581,7 +531,6 @@
       '<li>السائق يرى <b>مواقع طلبات الركوب</b> المجهولة على مساره فقط، ولا يرى أسماء الطلاب أو أرقام هواتفهم.</li>' +
       '<li>لا تُعرض <b>أرقام هواتف الطلاب</b> في أي شاشة من لوحة الإدارة أو في التقارير المصدّرة.</li>' +
       '<li>التقارير المصدّرة تحتوي على أعداد وإحصائيات مجمّعة (ركاب الخطوط، الالتزام بالمواعيد، تقييمات السائقين).</li>' +
-      '<li>الرقم الجامعي في سجل المسح يُستخدم للتحقق من تفعيل الطالب فقط، ولا يُشارك مع أي طرف آخر.</li>' +
       '<li>شكاوى الطلاب تُعرض للإدارة فقط.</li>' +
       '</ul></div>';
   }
@@ -642,7 +591,6 @@
     monitor: { label: 'المتابعة الحية للأسطول', render: renderMonitor },
     publish: { label: 'جدول اليوم والرحلات', render: () => renderPublish() + '<div style="margin-top:18px">' + renderTrips() + '</div>' },
     demand: { label: 'لوحة الطلب المباشر', render: renderDemand },
-    qr: { label: 'تسجيل الركوب (QR)', render: renderQr },
     complaints: { label: 'البلاغات والسياسات', render: () => renderComplaints() + '<div style="margin-top:18px">' + renderPolicies() + '</div><div style="margin-top:18px">' + renderPrivacy() + '</div>' },
     reports: { label: 'التقارير والتصدير', render: renderReports },
   };
@@ -696,12 +644,6 @@
       const r = s.reports.find((x) => x.id === id);
       if (r) r.status = r.status === 'closed' ? 'open' : 'closed';
     }),
-    qrScan: () => doScan($('#qrId') ? $('#qrId').value : ''),
-    qrRandom: () => {
-      const list = MB.state.students;
-      if (!list.length) return toast('لا يوجد طلاب مسجّلون', true);
-      doScan(list[Math.floor(Math.random() * list.length)].studentId);
-    },
     polDel: ({ i }) => { polDraft.rules.splice(+i, 1); renderView(); },
     polAdd: () => { polDraft.rules.push(''); renderView(); const inputs = document.querySelectorAll('[data-inp="pol"]'); if (inputs.length) inputs[inputs.length - 1].focus(); },
     polSave: () => {
@@ -747,9 +689,6 @@
     if (!el) return;
     const fn = INPUTS[el.dataset.inp];
     if (fn) fn(el.value, el.dataset);
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.target && e.target.id === 'qrId') doScan(e.target.value);
   });
 
   // ---------- boot ----------

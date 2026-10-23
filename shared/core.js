@@ -6,7 +6,7 @@
    those anonymous pins live as mandatory stops (status 'accepted' from the start). The driver can't skip: the bus
    always pauses at each pickup for a few seconds (boarding) and then continues. */
 (function () {
-  const KEY = 'movia_state_v4';
+  const KEY = 'movia_state_v5';
   const TRIP_MS = 8 * 60 * 1000;   // a full trip takes 8 real minutes in the demo
   const BOARD_MS = 8 * 1000;       // how long the bus waits at an accepted pickup
 
@@ -117,7 +117,7 @@
   function seed() {
     const trips = seedTrips();
     return {
-      v: 4,
+      v: 5,
       trips,
       pickups: seedPickups(trips),
       me: { name: 'أحمد محمد', studentId: '20231547' },
@@ -137,14 +137,6 @@
       ],
       ratings: [ { tripId: 't1', driverId: 'd1', stars: 5 }, { tripId: 't2', driverId: 'd2', stars: 4 } ],
       chat: [],
-      students: [
-        { id: 'u1', name: 'أحمد محمد',   studentId: '20231547', status: 'active',   scanned: true },
-        { id: 'u2', name: 'سارة علي',    studentId: '20231622', status: 'active',   scanned: true },
-        { id: 'u3', name: 'كريم حسن',    studentId: '20230988', status: 'inactive', scanned: false },
-        { id: 'u4', name: 'منى إبراهيم', studentId: '20241205', status: 'active',   scanned: true },
-        { id: 'u5', name: 'عمر خالد',    studentId: '20232390', status: 'active',   scanned: false },
-        { id: 'u6', name: 'ياسمين طارق', studentId: '20241777', status: 'active',   scanned: true },
-      ],
       policies: {
         lastReturn: '19:30',
         rules: [
@@ -159,7 +151,7 @@
   let state = null;
   const subs = new Set();
   function load() {
-    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 4) return s; } catch (e) {}
+    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 5) return s; } catch (e) {}
     return null;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
