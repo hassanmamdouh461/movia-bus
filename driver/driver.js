@@ -292,8 +292,7 @@
         '<div class="req-info"><strong>طالب</strong>' +
         '<span class="req-state wait">على بُعد ' + fmtDist(r.dist) + ' · يوصل خلال ' + r.eta + ' د</span></div>' +
         '<div class="req-actions">' +
-        '<button class="btn ok big" type="button" data-accept="' + id + '">هقف له</button>' +
-        '<button class="btn sec big" type="button" data-skip="' + id + '">تخطّي</button>' +
+        '<button class="btn ok big" type="button" data-accept="' + id + '">تمام، هقف له</button>' +
         '</div></div>';
     }).join('');
   }
@@ -425,9 +424,7 @@
 
     $('reqList').addEventListener('click', (e) => {
       const a = e.target.closest('button[data-accept]');
-      const s = e.target.closest('button[data-skip]');
       if (a) { MB.acceptPickup(a.dataset.accept); toast('تم — هتقف للطالب على المسار'); }
-      else if (s) { MB.skipPickup(s.dataset.skip); toast('تم تخطي طلب الركوب'); }
     });
 
     $('quick').innerHTML = QUICK_REPLIES.map((q) =>

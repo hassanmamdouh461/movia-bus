@@ -3,8 +3,8 @@
 
    Model (no stations): each route is a fixed path (polyline). The bus drives continuously along it.
    A student taps "Ready" -> shares a pickup location on/near the path (state.pickups). The driver sees
-   those anonymous pins live and can accept ("هقف لك") or skip. An accepted pickup makes the bus pause
-   there for a few seconds (boarding) and then continue. */
+   those anonymous pins live and acknowledges them ("تمام، هقف له"). The driver can't skip: the bus
+   always pauses at each pickup for a few seconds (boarding) and then continues. */
 (function () {
   const KEY = 'movia_state_v3';
   const TRIP_MS = 8 * 60 * 1000;   // a full trip takes 8 real minutes in the demo
@@ -256,12 +256,6 @@
       const k = state.pickups.find((x) => x.id === id);
       if (k && k.mine) this.notify('السواق هيقف لك — جهّز نفسك', 'bus');
     },
-    /** DRIVER: can't stop here */
-    skipPickup(id) {
-      this.update((s) => { const k = s.pickups.find((x) => x.id === id); if (k && k.status === 'waiting') k.status = 'skipped'; });
-      const k = state.pickups.find((x) => x.id === id);
-      if (k && k.mine) this.notify('السواق مش هيقدر يقف عندك — احجز أقرب رحلة', 'bus');
-    },
     tripLabel(t) { const r = R[t.routeId]; return r.name + ' · ' + (t.direction === 'go' ? 'ذهاب' : 'عودة') + ' · ' + t.time; },
     statusLabel: { scheduled: 'مجدولة', at_start: 'جاهزة للانطلاق', en_route: 'في الطريق', arrived: 'انتهت', cancelled: 'ملغاة' },
     newTripId() { return 't' + (Date.now().toString(36)); },
@@ -287,8 +281,8 @@
       const p = progressOf(t);
       state.pickups.forEach((k) => {
         if (k.tripId !== t.id || p < k.progress) return;
-        if (k.status === 'accepted') { k.status = 'boarding'; k.boardingUntil = now + BOARD_MS; t.pauseStart = now; changed = true; }
-        else if (k.status === 'waiting') { k.status = 'passed'; changed = true; }
+        // the driver must stop for every request: acknowledged ("accepted") or not, the bus boards the student
+        if (k.status === 'accepted' || k.status === 'waiting') { k.status = 'boarding'; k.boardingUntil = now + BOARD_MS; t.pauseStart = now; changed = true; }
       });
       if (p >= 1) { t.status = 'arrived'; t.pauseStart = null; changed = true; }
     });
