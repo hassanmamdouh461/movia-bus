@@ -286,7 +286,7 @@
       if (k.status === 'accepted') {
         return '<div class="req-row accepted">' +
           '<div class="req-info"><strong>طالب</strong>' +
-          '<span class="req-state acc">إجباري — هتقف بعد ' + r.eta + ' دقيقة · على بُعد ' + fmtDist(r.dist) + '</span></div></div>';
+          '<span class="req-state acc">هتقف بعد ' + r.eta + ' دقيقة · على بُعد ' + fmtDist(r.dist) + '</span></div></div>';
       }
       return '<div class="req-row waiting">' +
         '<div class="req-info"><strong>طالب</strong>' +
