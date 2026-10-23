@@ -14,11 +14,14 @@
   const hhmmss = (ts) => { const d = new Date(ts); return hhmm(ts) + ':' + pad(d.getSeconds()); };
   const addDays = (key, n) => { const d = new Date(key + 'T12:00:00'); d.setDate(d.getDate() + n); return dayKey(d.getTime()); };
   const dirLabel = (d) => (d === 'go' ? 'ذهاب' : 'عودة');
-  const routeName = (id) => (MB.R[id] ? MB.R[id].name : '—');
+  const lineLabel = (r) => (r && r.fromName && r.toName ? r.fromName + ' → ' + r.toName : r ? r.name : '—');
+  const routeName = (id) => lineLabel(MB.R[id]);
+  // defensive: old saved state may lack pickups; never throw
+  const pkOf = (tripId, active) => { try { return MB.pickupsOf(tripId, active) || []; } catch (e) { return []; } };
   const drvName = (id) => (MB.drv[id] ? MB.drv[id].name : '—');
   const plateOf = (id) => (MB.bus[id] ? MB.bus[id].plate : '—');
   const busNo = (t) => (MB.bus[t.busId] ? MB.bus[t.busId].plate.split(' ').pop() : '—');
-  const titleOf = (t) => MB.tripLabel(t);
+  const titleOf = (t) => routeName(t.routeId) + ' · ' + dirLabel(t.direction) + ' · ' + t.time;
   const dayTrips = (day) => MB.state.trips.filter((t) => dayKey(t.scheduledAt) === day).sort((a, b) => a.scheduledAt - b.scheduledAt);
   const tripsToday = () => dayTrips(todayKey());
   const fillPct = (t) => (t.capacity ? Math.round((t.booked / t.capacity) * 100) : 0);
@@ -30,12 +33,6 @@
   const empty = (msg) => '<p class="mute">' + esc(msg) + '</p>';
   const head = (title, extra) => '<div class="row head"><h2 class="grow">' + esc(title) + '</h2>' + (extra || '') + '</div>';
   const table = (heads, rowsHtml) => '<div class="tbl"><table><thead><tr>' + heads.map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
-
-  function ensureWaiting(s, t) {
-    s.waiting = s.waiting || {};
-    const w = s.waiting[t.id] || (s.waiting[t.id] = {});
-    MB.stopsOf(t).forEach((sid) => { if (w[sid] == null) w[sid] = 0; });
-  }
 
   function toast(msg, bad) {
     document.querySelectorAll('.adm-toast').forEach((n) => n.remove());
@@ -146,7 +143,6 @@
     const nt = { id: MB.newTripId(), routeId: t.routeId, direction: t.direction, time: t.time, scheduledAt: t.scheduledAt, driverId: drv.id, busId: bus.id, capacity: bus.capacity, booked: moved, waitlist: 0, status: 'scheduled', startedAt: null, published: false };
     MB.update((s) => {
       s.trips.push(nt);
-      ensureWaiting(s, nt);
       const src = s.trips.find((x) => x.id === id);
       if (src) src.waitlist = Math.max(0, src.waitlist - moved);
     });
@@ -155,7 +151,7 @@
   }
 
   function tripFields(t, day) {
-    const routeOpts = MB.routes.map((r) => '<option value="' + r.id + '" ' + (t && t.routeId === r.id ? 'selected' : '') + '>' + esc(r.name) + '</option>').join('');
+    const routeOpts = MB.routes.map((r) => '<option value="' + r.id + '" ' + (t && t.routeId === r.id ? 'selected' : '') + '>' + esc(lineLabel(r)) + '</option>').join('');
     const drvOpts = MB.drivers.map((d) => '<option value="' + d.id + '" ' + (t && t.driverId === d.id ? 'selected' : '') + '>' + esc(d.name) + '</option>').join('');
     const busOpts = MB.buses.map((b) => '<option value="' + b.id + '" ' + (t && t.busId === b.id ? 'selected' : '') + '>' + esc(b.plate) + ' · ' + b.capacity + ' مقعد</option>').join('');
     return '<label>التاريخ</label><input type="date" name="date" value="' + esc(day) + '" required>' +
@@ -180,11 +176,9 @@
         Object.assign(t, { routeId: route.id, direction: data.direction === 'back' ? 'back' : 'go', time: data.time, scheduledAt: sched, driverId: drv.id, busId: bus.id, capacity: bus.capacity });
         t.booked = Math.min(total, bus.capacity);
         t.waitlist = total - t.booked;
-        ensureWaiting(s, t);
       } else {
         const t = { id: MB.newTripId(), routeId: route.id, direction: data.direction === 'back' ? 'back' : 'go', time: data.time, scheduledAt: sched, driverId: drv.id, busId: bus.id, capacity: bus.capacity, booked: 0, waitlist: 0, status: 'scheduled', startedAt: null, published: false };
         s.trips.push(t);
-        ensureWaiting(s, t);
       }
     });
     return '';
@@ -230,7 +224,6 @@
           const bus = MB.bus[d.busId];
           const t = { id: MB.newTripId(), routeId: d.routeId, direction: d.direction, time: d.time, scheduledAt: at(day, d.time), driverId: d.driverId, busId: d.busId, capacity: bus.capacity, booked: 0, waitlist: 0, status: 'scheduled', startedAt: null, published: true };
           s.trips.push(t);
-          ensureWaiting(s, t);
           added++;
           return;
         }
@@ -358,8 +351,10 @@
     return head('المراقبة المباشرة', '<span class="live-pill"><i></i>مباشر</span>') +
       '<div id="liveMap" class="map live"></div>' +
       '<div id="monStats" class="grid g4"></div>' +
+      '<div class="card" style="margin-bottom:12px"><h3>طلبات الركوب (Ready)</h3><div id="readyStats" class="row" style="flex-wrap:wrap;gap:8px"></div>' +
+      '<p class="adm-note">أعداد فقط لطلبات رحلات اليوم، بدون أي بيانات شخصية للطلاب.</p></div>' +
       '<div class="card"><h3>الرحلات الجارية</h3>' +
-      '<div class="tbl"><table><thead><tr><th>الرحلة</th><th>الحافلة</th><th>السائق</th><th>التقدم</th><th>المحطة القادمة</th><th>الركاب</th><th>آخر تحديث</th></tr></thead><tbody id="monBody"></tbody></table></div>' +
+      '<div class="tbl"><table><thead><tr><th>الخط</th><th>السائق</th><th>التقدم</th><th>الركاب</th><th>طلبات نشطة</th><th>تم الركوب</th><th>الحالة</th></tr></thead><tbody id="monBody"></tbody></table></div>' +
       '</div>';
   }
 
@@ -372,9 +367,16 @@
     }
     map = L.map(el).setView([30.03, 31.27], 12);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
-    MB.routes.forEach((r) => L.polyline(r.polyline, { color: r.color, weight: 4, opacity: 0.75 }).addTo(map));
-    MB.stations.forEach((st) => L.circleMarker([st.lat, st.lng], { radius: 6, color: '#1b1f24', weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(esc(st.name)).addTo(map));
-    map.fitBounds(MB.stations.map((st) => [st.lat, st.lng]), { padding: [24, 24] });
+    const pts = [];
+    (MB.routes || []).forEach((r) => {
+      if (!r.polyline || !r.polyline.length) return;
+      L.polyline(r.polyline, { color: r.color, weight: 4, opacity: 0.75 }).addTo(map);
+      const a = r.polyline[0], b = r.polyline[r.polyline.length - 1];
+      pts.push(a, b);
+      L.circleMarker(a, { radius: 6, color: r.color, weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('بداية: ' + esc(r.fromName || '')).addTo(map);
+      L.circleMarker(b, { radius: 6, color: r.color, weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('نهاية: ' + esc(r.toName || '')).addTo(map);
+    });
+    if (pts.length) map.fitBounds(pts, { padding: [24, 24] });
   }
 
   function updateMonitor() {
@@ -383,15 +385,31 @@
     const pax = en.reduce((a, t) => a + t.booked, 0);
     const avg = en.length ? Math.round((en.reduce((a, t) => a + MB.progressOf(t), 0) / en.length) * 100) : 0;
     $('#monStats').innerHTML = kpi('حافلات في الطريق', en.length) + kpi('الركاب على متنها', pax) + kpi('متوسط التقدم', avg + '%');
-    const now = hhmmss(Date.now());
     $('#monBody').innerHTML = en.length ? en.map((t) => {
-      const p = MB.position(t);
+      const p = MB.position(t) || { progress: MB.progressOf(t), paused: false };
       const pctv = Math.round(p.progress * 100);
-      const nextName = MB.S[p.nextStopId] ? MB.S[p.nextStopId].name : '—';
-      return '<tr><td>' + esc(titleOf(t)) + '</td><td>' + esc(plateOf(t.busId)) + '</td><td>' + esc(drvName(t.driverId)) + '</td>' +
+      const active = pkOf(t.id, true).length;
+      const boarded = pkOf(t.id, false).filter((k) => k.status === 'boarded').length;
+      const pausedBadge = p.paused ? '<span class="badge warn">واقف للركوب</span>' : '<span class="badge ok">في الطريق</span>';
+      return '<tr><td>' + esc(routeName(t.routeId)) + ' · ' + dirLabel(t.direction) + '</td><td>' + esc(drvName(t.driverId)) + '</td>' +
         '<td style="min-width:120px"><div class="bar"><i style="width:' + pctv + '%"></i></div> ' + pctv + '%</td>' +
-        '<td>' + esc(nextName) + '</td><td>' + t.booked + ' / ' + t.capacity + '</td><td>' + now + '</td></tr>';
+        '<td>' + t.booked + ' / ' + t.capacity + '</td><td>' + active + '</td><td>' + boarded + '</td><td>' + pausedBadge + '</td></tr>';
     }).join('') : '<tr><td colspan="7" class="mute">لا توجد حافلات في الطريق الآن</td></tr>';
+
+    // Ready requests: counts only (no student identity) across today's trips
+    const rs = $('#readyStats');
+    if (rs) {
+      const todayIds = new Set(tripsToday().map((t) => t.id));
+      const cnt = { waiting: 0, accepted: 0, boarded: 0, skipped: 0, passed: 0 };
+      (MB.state.pickups || []).forEach((k) => {
+        if (!todayIds.has(k.tripId)) return;
+        if (k.status === 'boarding') cnt.accepted++;
+        else if (cnt[k.status] != null) cnt[k.status]++;
+      });
+      const chip = (cls, label, n) => '<span class="badge ' + cls + '">' + esc(label) + ': ' + n + '</span>';
+      rs.innerHTML = chip('warn', 'منتظر', cnt.waiting) + chip('info', 'مقبول (جارٍ الركوب)', cnt.accepted) +
+        chip('ok', 'تم الركوب', cnt.boarded) + chip('bad', 'اعتذر السائق', cnt.skipped) + chip('', 'فاتهم الباص', cnt.passed);
+    }
 
     if (map && window.L) {
       const seen = new Set();
@@ -467,7 +485,7 @@
         const ts = trips.filter((t) => t.routeId === r.id && t.status !== 'cancelled');
         const booked = ts.reduce((a, t) => a + t.booked, 0);
         const cap = ts.reduce((a, t) => a + t.capacity, 0);
-        return [r.name, ts.length, booked, cap, cap ? Math.round((booked / cap) * 100) : 0];
+        return [lineLabel(r), ts.length, booked, cap, cap ? Math.round((booked / cap) * 100) : 0];
       });
       return { name: 'passengers-per-line', head: ['الخط', 'عدد الرحلات', 'إجمالي الحجوزات', 'إجمالي المقاعد', 'نسبة الامتلاء %'], rows };
     }
@@ -609,7 +627,7 @@
   function renderPrivacy() {
     return head('سياسة الخصوصية', '') +
       '<div class="card priv"><h3>ما تراه كل جهة</h3><ul>' +
-      '<li>السائق يرى <b>عدد المنتظرين</b> في كل محطة فقط، ولا يرى أسماء الطلاب أو أرقام هواتفهم.</li>' +
+      '<li>السائق يرى <b>مواقع طلبات الركوب</b> المجهولة على مساره فقط، ولا يرى أسماء الطلاب أو أرقام هواتفهم.</li>' +
       '<li>لا تُعرض <b>أرقام هواتف الطلاب</b> في أي شاشة من لوحة الإدارة أو في التقارير المصدّرة.</li>' +
       '<li>التقارير المصدّرة تحتوي على أعداد وإحصائيات مجمّعة (ركاب الخطوط، الالتزام بالمواعيد، تقييمات السائقين).</li>' +
       '<li>الرقم الجامعي في سجل المسح يُستخدم للتحقق من صلاحية الاشتراك فقط، ولا يُشارك مع أي طرف آخر.</li>' +

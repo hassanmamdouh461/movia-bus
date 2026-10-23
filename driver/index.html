@@ -33,7 +33,7 @@
 
 <main class="wrap">
   <div class="drv-grid">
-    <!-- Right Column: Primary Controls + Next Stop + Skip Empty Stops -->
+    <!-- Right Column: Primary Controls + Next Up request + inline chat -->
     <div>
       <section class="card">
         <div class="row" style="justify-content:space-between;align-items:flex-start">
@@ -49,9 +49,9 @@
         <button class="btn big go-btn" id="btnMain" type="button">ابدأ الرحلة</button>
         <p class="mute hint" id="hint"></p>
 
-        <div class="next-card">
+        <div class="next-card" id="nextCard">
           <div>
-            <span class="mute" id="nextLabel">المحطة القادمة</span>
+            <span class="mute" id="nextLabel">أقرب طلب ركوب</span>
             <strong class="next-name" id="nextName">—</strong>
             <span class="badge info" id="nextWait" style="margin-top:4px"></span>
           </div>
@@ -60,11 +60,6 @@
             <span class="mute" id="etaUnit"></span>
           </div>
         </div>
-      </section>
-
-      <section class="card skip-banner">
-        <h3>كارت «وفّر وقت» — تخطي المحطات الفاضية</h3>
-        <div id="saveList"></div>
       </section>
 
       <section class="card">
@@ -81,19 +76,22 @@
       </section>
     </div>
 
-    <!-- Left Column: Live Route Map + Station Demand Counts -->
+    <!-- Left Column: Live Route Map + Ready requests (bottom sheet) -->
     <div>
       <section class="card" style="padding:12px">
         <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <h3 style="margin:0">خريطة الطلب على المحطات</h3>
-          <span class="mute">يُعرض عدد المنتظرين فقط حفاظاً على الخصوصية</span>
+          <h3 style="margin:0">خريطة المسار والطلبات</h3>
+          <span class="mute">الطلاب بيظهروا بشكل مجهول حفاظاً على الخصوصية</span>
         </div>
         <div class="map" id="map" style="height:330px;margin:0"></div>
       </section>
 
       <section class="card">
-        <h3>أعداد الطلاب المنتظرين في كل محطة</h3>
-        <div id="demandList"></div>
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h3 style="margin:0">طلبات الركوب</h3>
+          <span class="badge info" id="reqCount">0</span>
+        </div>
+        <div id="reqList" class="req-list"></div>
       </section>
     </div>
   </div>

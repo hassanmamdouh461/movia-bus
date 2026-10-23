@@ -1,14 +1,15 @@
-/* Movia Bus — Driver Interface (Simple two-button control, station demand, inline chat) */
+/* Movia Bus — Driver Interface (two-button control, students' Ready requests, inline chat).
+   No stations: the bus drives the route line; students' Ready requests appear as anonymous pins. */
 (function () {
   'use strict';
 
   const DRIVER_KEY = 'mb_driver_id';
-  const QUICK_REPLIES = ['أنا في الطريق', 'وصلت المحطة', 'هنتظر دقيقة', 'هتأخر 5 دقائق'];
+  const QUICK_REPLIES = ['أنا في الطريق', 'وصلت نقطة الركوب', 'هنتظر دقيقة', 'هتأخر 5 دقائق'];
   const STATUS_STEPS = [['scheduled', 'لم تبدأ'], ['en_route', 'في الطريق'], ['arrived', 'وصل الجامعة / انتهت']];
   const SEED_CHAT = [
     { from: 'student', text: 'السلام عليكم يا كابتن، الحافلة فين حالياً؟', ago: 12 * 60000 },
-    { from: 'driver', text: 'وعليكم السلام، أنا في الطريق للمحطة', ago: 10 * 60000 },
-    { from: 'student', text: 'تمام، أنا منتظر عند المحطة', ago: 3 * 60000 },
+    { from: 'driver', text: 'وعليكم السلام، أنا في الطريق وهشوف طلبات الركوب', ago: 10 * 60000 },
+    { from: 'student', text: 'تمام، أنا منتظر عند نقطة الركوب', ago: 3 * 60000 },
   ];
 
   const $ = (id) => document.getElementById(id);
@@ -43,11 +44,6 @@
       || null;
   }
 
-  function nextIndex(trip) {
-    const pos = trip.status === 'en_route' ? MB.position(trip) : null;
-    return pos ? pos.nextStopIdx : -1;
-  }
-
   function toast(msg) {
     document.querySelectorAll('.toast').forEach((n) => n.remove());
     const t = document.createElement('div');
@@ -57,8 +53,52 @@
     setTimeout(() => t.remove(), 2800);
   }
 
-  let map = null, routeLayer = null, crowdLayer = null, busLayer = null;
-  let lastTripId = null, lastDemandSig = '', lastSaveSig = '', lastChatSig = '';
+  function isPaused(trip) {
+    const pos = trip.status === 'en_route' ? MB.position(trip) : null;
+    return !!(pos && pos.paused);
+  }
+
+  /* ---- distance along the route (metres), from the polyline ---- */
+  const cumCache = {};
+  function cumOf(trip) {
+    const key = trip.routeId + ':' + trip.direction;
+    if (!cumCache[key]) {
+      const poly = MB.polyOf(trip), cum = [0];
+      for (let i = 1; i < poly.length; i++) {
+        const dy = (poly[i][0] - poly[i - 1][0]) * 111000, dx = (poly[i][1] - poly[i - 1][1]) * 96000;
+        cum.push(cum[i - 1] + Math.sqrt(dx * dx + dy * dy));
+      }
+      cumCache[key] = cum;
+    }
+    return cumCache[key];
+  }
+  function metersAt(trip, p) {
+    const cum = cumOf(trip), n = cum.length;
+    const f = Math.max(0, Math.min(1, p)) * (n - 1);
+    const i = Math.min(n - 2, Math.floor(f)), t = f - i;
+    return cum[i] + (cum[i + 1] - cum[i]) * t;
+  }
+  function distAhead(trip, pk, pos) { return Math.max(0, metersAt(trip, pk.progress) - metersAt(trip, pos.progress)); }
+  function fmtDist(m) { return m < 1000 ? Math.round(m) + ' م' : (m / 1000).toFixed(1) + ' كم'; }
+  function secsLeft(k) { return Math.max(0, Math.ceil(((k.boardingUntil || 0) - Date.now()) / 1000)); }
+
+  /* active requests still ahead of the bus, nearest first (boarding ones on top) */
+  function aheadRequests(trip) {
+    const pos = MB.position(trip);
+    if (!pos) return [];
+    const out = [];
+    MB.pickupsOf(trip.id, true).forEach((k) => {
+      if (k.status === 'boarding') { out.push({ k, eta: 0, dist: 0 }); return; }
+      const eta = MB.etaToPickup(trip, k);
+      if (eta == null) return;
+      out.push({ k, eta, dist: distAhead(trip, k, pos) });
+    });
+    return out.sort((a, b) => (b.k.status === 'boarding') - (a.k.status === 'boarding') || a.dist - b.dist);
+  }
+
+  let map = null, routeLayer = null, pinLayer = null, busLayer = null;
+  let lastTripId = null, lastPinSig = '', lastReqSig = '', lastChatSig = '';
+  let knownPickups = null;
 
   function initMap() {
     if (typeof L === 'undefined') return;
@@ -68,7 +108,7 @@
       attribution: '&copy; OpenStreetMap',
     }).addTo(map);
     routeLayer = L.layerGroup().addTo(map);
-    crowdLayer = L.layerGroup().addTo(map);
+    pinLayer = L.layerGroup().addTo(map);
     busLayer = L.layerGroup().addTo(map);
     setTimeout(() => map.invalidateSize(), 50);
     window.addEventListener('resize', () => map && map.invalidateSize());
@@ -80,39 +120,38 @@
     const route = MB.R[trip.routeId];
     const poly = MB.polyOf(trip);
     L.polyline(poly, { color: route.color, weight: 6, opacity: 0.9 }).addTo(routeLayer);
+    const term = (latlng, name, cls) => L.marker(latlng, {
+      icon: L.divIcon({
+        className: 'mb-icon',
+        html: '<div class="pin term ' + cls + '">' + esc(name) + '</div>',
+        iconSize: [170, 24],
+        iconAnchor: [85, 12],
+      }),
+    }).addTo(routeLayer);
+    term(poly[0], trip.direction === 'go' ? route.fromName : route.toName, 'start');
+    term(poly[poly.length - 1], trip.direction === 'go' ? route.toName : route.fromName, 'end');
     map.fitBounds(L.latLngBounds(poly), { padding: [28, 28] });
   }
 
-  function chipClass(n) { return n >= 5 ? 'chip warn' : n > 0 ? 'chip info' : 'chip'; }
-
-  function renderDemand(trip) {
-    const stops = MB.stopsOf(trip);
-    const counts = MB.waitingCounts(trip.id);
-    const nextIdx = nextIndex(trip);
-    const sig = trip.id + '|' + nextIdx + '|' + stops.map((s) => counts[s] || 0).join(',');
-    if (sig === lastDemandSig) return;
-    lastDemandSig = sig;
-    if (map) {
-      crowdLayer.clearLayers();
-      stops.forEach((sid) => {
-        const st = MB.S[sid], n = counts[sid] || 0;
-        L.marker([st.lat, st.lng], {
-          icon: L.divIcon({
-            className: 'mb-icon',
-            html: '<div class="pin ' + (n > 0 ? 'crowd' : '') + '">' + n + '</div>',
-            iconSize: [26, 26],
-            iconAnchor: [13, 13],
-          }),
-        }).bindTooltip(st.name + ': ' + n + ' منتظر').addTo(crowdLayer);
-      });
-    }
-    $('demandList').innerHTML = stops.map((sid, i) => {
-      const n = counts[sid] || 0;
-      const cls = i < nextIdx ? 'passed' : i === nextIdx ? 'next' : '';
-      return '<div class="stop-row ' + cls + '"><span class="stop-dot"></span>' +
-        '<span class="grow">' + (i + 1) + '. ' + esc(MB.S[sid].name) + '</span>' +
-        '<span class="' + chipClass(n) + '">' + (n > 0 ? n + ' طالب منتظر' : '0 — محطة خالية') + '</span></div>';
-    }).join('');
+  function renderPins(trip) {
+    if (!map) return;
+    const act = MB.pickupsOf(trip.id, true);
+    const sig = trip.id + '|' + act.map((k) => k.id + k.status).join(',');
+    if (sig === lastPinSig) return;
+    lastPinSig = sig;
+    pinLayer.clearLayers();
+    act.forEach((k) => {
+      const cls = k.status === 'accepted' ? 'acc' : k.status === 'boarding' ? 'brd' : 'wait';
+      const tip = k.status === 'accepted' ? 'هتقف له' : k.status === 'boarding' ? 'واقف — بيركبوا' : 'طلب ركوب منتظر';
+      L.marker([k.lat, k.lng], {
+        icon: L.divIcon({
+          className: 'mb-icon',
+          html: '<div class="pin req ' + cls + '">طالب</div>',
+          iconSize: [44, 26],
+          iconAnchor: [22, 13],
+        }),
+      }).bindTooltip(tip).addTo(pinLayer);
+    });
   }
 
   function renderBus(trip) {
@@ -134,23 +173,30 @@
   }
 
   function renderPill(trip) {
-    const state = !trip ? 'off' : trip.status === 'en_route' ? 'live' : 'on';
+    const paused = isPaused(trip);
+    const state = !trip ? 'off' : paused ? 'paused' : trip.status === 'en_route' ? 'live' : 'on';
     const pill = $('statusPill');
     pill.dataset.state = state;
-    $('statusText').textContent = state === 'live' ? 'بث الموقع شغال أثناء الرحلة' : 'متصل (لا يتم تتبعك خارج الرحلة)';
+    $('statusText').textContent =
+      state === 'paused' ? 'واقف للركوب' :
+      state === 'live' ? 'بث الموقع شغال أثناء الرحلة' : 'متصل (لا يتم تتبعك خارج الرحلة)';
   }
 
   function renderHeader(trip) {
     const s = trip.status;
+    const paused = isPaused(trip);
     $('tripTitle').textContent = MB.tripLabel(trip);
     const plate = (MB.bus[trip.busId] || {}).plate || '';
     $('tripMeta').textContent = 'حافلة: ' + plate + ' · الحجوزات: ' + trip.booked + ' من ' + trip.capacity +
       (trip.waitlist ? ' · انتظار: ' + trip.waitlist : '');
 
     const idx = s === 'en_route' ? 1 : s === 'arrived' ? 2 : 0;
-    $('chain').innerHTML = STATUS_STEPS.map((st, i) =>
-      '<li class="' + (i < idx ? 'done' : i === idx ? 'cur' : '') + '">' +
-      (i === 0 && s === 'at_start' ? MB.statusLabel.at_start : st[1]) + '</li>').join('');
+    $('chain').innerHTML = STATUS_STEPS.map((st, i) => {
+      let label = st[1];
+      if (i === 0 && s === 'at_start') label = MB.statusLabel.at_start;
+      if (i === 1 && paused) label = 'واقف للركوب';
+      return '<li class="' + (i < idx ? 'done' : i === idx ? 'cur' : '') + '">' + label + '</li>';
+    }).join('');
 
     const btn = $('btnMain');
     if (s === 'en_route') {
@@ -170,58 +216,99 @@
     $('hint').textContent =
       s === 'en_route' ? 'حالة الرحلة وموقعك يتحدثان تلقائياً للطلاب والإدارة لحظياً.' :
       s === 'arrived' ? 'انتهت هذه الرحلة. يمكنك اختيار رحلة أخرى من القائمة أو إعادة تشغيلها للتجربة.' :
-      'اضغط «ابدأ الرحلة» عند التحرك من محطة البداية لتظهر الحافلة فوراً للطلاب.';
+      'اضغط «ابدأ الرحلة» عند التحرك من نقطة البداية لتظهر الحافلة فوراً للطلاب.';
     $('chatSub').textContent = MB.tripLabel(trip);
   }
 
+  function setNext(label, name, badge, num, unit) {
+    $('nextLabel').textContent = label;
+    $('nextName').textContent = name;
+    $('nextWait').textContent = badge;
+    $('etaNum').textContent = num;
+    $('etaUnit').textContent = unit;
+  }
+
   function renderNext(trip) {
-    const counts = MB.waitingCounts(trip.id);
-    const stops = MB.stopsOf(trip);
+    const card = $('nextCard');
+    const route = MB.R[trip.routeId];
     const pos = trip.status === 'en_route' ? MB.position(trip) : null;
-    if (pos) {
-      const sid = pos.nextStopId, eta = MB.etaMinutes(trip, sid);
-      $('nextLabel').textContent = 'المحطة القادمة';
-      $('nextName').textContent = MB.S[sid].name;
-      $('nextWait').textContent = (counts[sid] || 0) + ' طالب منتظر';
-      $('etaNum').textContent = eta != null ? eta : '—';
-      $('etaUnit').textContent = 'دقيقة';
+    const reqs = pos ? aheadRequests(trip) : [];
+    const waitCount = MB.pickupsOf(trip.id, true).filter((k) => k.status === 'waiting').length;
+    const boarding = reqs.find((r) => r.k.status === 'boarding');
+    const nearest = reqs.find((r) => r.k.status === 'waiting') || reqs.find((r) => r.k.status === 'accepted');
+    const hot = !!(nearest && nearest.k.status === 'waiting' && !boarding);
+    card.classList.toggle('hot', hot);
+
+    if (boarding) {
+      setNext('واقف للركوب', 'الطلاب بيركبوا دلوقتي', 'باقي ' + secsLeft(boarding.k) + ' ث',
+        String(secsLeft(boarding.k)), 'ثانية');
+    } else if (nearest) {
+      const isWait = nearest.k.status === 'waiting';
+      setNext(isWait ? 'أقرب طلب ركوب' : 'أقرب موقف مؤكد',
+        'طالب على بُعد ' + fmtDist(nearest.dist),
+        isWait ? 'ينتظر · ' + waitCount + ' طلب نشط' : 'هتقف له',
+        String(nearest.eta), 'دقيقة');
+    } else if (pos) {
+      setNext('الطريق قدامك', route.toName, 'مفيش طلبات قدامك', '—', '');
     } else if (trip.status === 'scheduled' || trip.status === 'at_start') {
-      const first = stops[0];
-      $('nextLabel').textContent = 'محطة الانطلاق';
-      $('nextName').textContent = MB.S[first].name;
-      $('nextWait').textContent = (counts[first] || 0) + ' طالب منتظر';
-      $('etaNum').textContent = trip.time;
-      $('etaUnit').textContent = 'موعد البدء';
+      setNext('موعد الانطلاق', route.fromName, 'طلبات منتظرة: ' + waitCount, trip.time, 'موعد البدء');
     } else {
-      $('nextLabel').textContent = 'نهاية المسار';
-      $('nextName').textContent = MB.S[stops[stops.length - 1]].name;
-      $('nextWait').textContent = 'تم الوصول';
-      $('etaNum').textContent = '✓';
-      $('etaUnit').textContent = 'انتهت';
+      setNext('نهاية المسار', route.toName, 'تم الوصول', '✓', 'انتهت');
     }
   }
 
-  function renderSave(trip) {
-    const box = $('saveList');
-    const skip = trip.status === 'en_route'
-      ? MB.emptyAhead(trip)
-      : MB.stopsOf(trip).slice(1, -1).filter((sid) => !(MB.waitingCounts(trip.id)[sid] > 0));
-    const stops = MB.stopsOf(trip);
-    const seg = Math.max(1, Math.round(((MB.TRIP_MS / 60000) * 3) / (stops.length - 1)));
-    const sig = trip.id + '|' + trip.status + '|' + skip.join(',') + '|' + seg;
-    if (sig === lastSaveSig) return;
-    lastSaveSig = sig;
-    if (!skip.length) {
-      box.innerHTML = '<p class="mute" style="margin:0">جميع المحطات القادمة عليها طلاب منتظرون حالياً.</p>';
+  function renderReqs(trip) {
+    const box = $('reqList');
+    const pos = trip.status === 'en_route' ? MB.position(trip) : null;
+    const reqs = pos ? aheadRequests(trip) : [];
+    const sig = trip.id + '|' + (pos ? 1 : 0) + '|' + reqs.map((r) =>
+      r.k.id + ':' + r.k.status + ':' + (r.k.status === 'boarding' ? secsLeft(r.k) : r.eta)).join(',');
+    if (sig === lastReqSig) return;
+    lastReqSig = sig;
+    $('reqCount').textContent = reqs.length;
+
+    if (!pos) {
+      box.innerHTML = '<p class="mute req-empty">طلبات الركوب بتظهر هنا لما الرحلة تبدأ.</p>';
       return;
     }
-    box.innerHTML =
-      '<p class="save-sum">يوجد <b>' + skip.length + '</b> محطات خالية بدون أي طلاب منتظرين · يمكنك تخطيها وتوفير <b>~' +
-      (skip.length * seg) + ' دقيقة</b>:</p>' +
-      skip.map((sid) =>
-        '<div class="row-item"><span class="grow">' + esc(MB.S[sid].name) + '</span>' +
-        '<span class="badge ok">توفير ~' + seg + ' د</span>' +
-        '<button class="btn sm sec" type="button" data-skip="' + esc(sid) + '" data-min="' + seg + '">تأكيد التخطي</button></div>').join('');
+    if (!reqs.length) {
+      box.innerHTML = '<p class="mute req-empty">مفيش طلبات ركوب قدامك حالياً.</p>';
+      return;
+    }
+    box.innerHTML = reqs.map((r) => {
+      const k = r.k, id = esc(k.id);
+      if (k.status === 'boarding') {
+        return '<div class="req-row boarding">' +
+          '<div class="req-info"><strong>طالب</strong>' +
+          '<span class="req-state brd">واقف — الطلاب بيركبوا</span>' +
+          '<span class="req-count">باقي ' + secsLeft(k) + ' ث</span></div></div>';
+      }
+      if (k.status === 'accepted') {
+        return '<div class="req-row accepted">' +
+          '<div class="req-info"><strong>طالب</strong>' +
+          '<span class="req-state acc">هتقف بعد ' + r.eta + ' دقيقة</span></div></div>';
+      }
+      return '<div class="req-row waiting">' +
+        '<div class="req-info"><strong>طالب</strong>' +
+        '<span class="req-state wait">على بُعد ' + fmtDist(r.dist) + ' · يوصل خلال ' + r.eta + ' د</span></div>' +
+        '<div class="req-actions">' +
+        '<button class="btn ok big" type="button" data-accept="' + id + '">هقف له</button>' +
+        '<button class="btn sec big" type="button" data-skip="' + id + '">تخطّي</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  /* subtle alert when a NEW waiting request shows up for one of this driver's trips */
+  function checkNewRequests() {
+    const all = MB.state.pickups.filter((k) => k.status === 'waiting');
+    if (knownPickups === null) { knownPickups = new Set(all.map((k) => k.id)); return; }
+    const myTrips = driverTrips().map((t) => t.id);
+    const fresh = all.filter((k) => !knownPickups.has(k.id));
+    all.forEach((k) => knownPickups.add(k.id));
+    if (fresh.some((k) => myTrips.indexOf(k.tripId) >= 0)) {
+      if (navigator.vibrate) { try { navigator.vibrate([120]); } catch (e) {} }
+      toast('طلب ركوب جديد من طالب على المسار');
+    }
   }
 
   function chatMsgs(trip) {
@@ -278,6 +365,7 @@
 
   function refresh() {
     renderTripSelect();
+    checkNewRequests();
     const trip = currentTrip();
     if (!trip) return;
     if (seedChat(trip)) return;
@@ -285,14 +373,14 @@
     renderHeader(trip);
     if (trip.id !== lastTripId) {
       lastTripId = trip.id;
-      lastDemandSig = ''; lastSaveSig = ''; lastChatSig = '';
+      lastPinSig = ''; lastReqSig = ''; lastChatSig = '';
       drawRoute(trip);
     }
     renderPill(trip);
     renderBus(trip);
     renderNext(trip);
-    renderDemand(trip);
-    renderSave(trip);
+    renderPins(trip);
+    renderReqs(trip);
     renderChat(trip);
   }
 
@@ -335,10 +423,11 @@
       }
     };
 
-    $('saveList').addEventListener('click', (e) => {
-      const b = e.target.closest('button[data-skip]');
-      if (!b) return;
-      toast('تم تخطي محطة «' + MB.S[b.dataset.skip].name + '» الخالية · توفير ~' + b.dataset.min + ' دقائق');
+    $('reqList').addEventListener('click', (e) => {
+      const a = e.target.closest('button[data-accept]');
+      const s = e.target.closest('button[data-skip]');
+      if (a) { MB.acceptPickup(a.dataset.accept); toast('تم — هتقف للطالب على المسار'); }
+      else if (s) { MB.skipPickup(s.dataset.skip); toast('تم تخطي طلب الركوب'); }
     });
 
     $('quick').innerHTML = QUICK_REPLIES.map((q) =>

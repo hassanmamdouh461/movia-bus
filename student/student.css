@@ -284,16 +284,6 @@ body.track .subnav {
   background: var(--brand-hover);
 }
 
-.act-btn.sos {
-  background: var(--bad-bg);
-  color: var(--bad);
-  border-color: #fca5a5;
-}
-
-.act-btn.sos:hover {
-  background: #fecaca;
-}
-
 /* Ready Box */
 .ready-box {
   background: var(--brand-soft);
@@ -459,6 +449,37 @@ body.track .subnav {
   font-weight: 800;
   border: 2px solid #fff;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Pickup point (Ready) on the map */
+.pk-pin {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--brand);
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.pk-pin.live::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  border: 2px solid var(--brand);
+  animation: pkPulse 1.6s ease-out infinite;
+}
+
+@keyframes pkPulse {
+  from { transform: scale(0.4); opacity: 0.9; }
+  to { transform: scale(1.4); opacity: 0; }
+}
+
+.map-box.picking,
+.map-box.picking .leaflet-grab,
+.map-box.picking .leaflet-interactive {
+  cursor: crosshair !important;
 }
 
 .me-dot {

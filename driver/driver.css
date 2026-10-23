@@ -51,6 +51,16 @@ body {
   background: var(--ok);
 }
 
+.status-pill[data-state="paused"] {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-color: #f3d58a;
+}
+
+.status-pill[data-state="paused"] .pulse {
+  background: var(--warn);
+}
+
 /* Status Chain */
 .chain {
   list-style: none;
@@ -107,7 +117,7 @@ body {
   text-align: center;
 }
 
-/* Next Stop Card */
+/* Next Up Request Card (nearest waiting request, big ETA) */
 .next-card {
   display: flex;
   align-items: center;
@@ -117,6 +127,11 @@ body {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 12px 14px;
+}
+
+.next-card.hot {
+  background: var(--brand-soft);
+  border-color: var(--brand);
 }
 
 .next-card > div:first-child {
@@ -140,95 +155,129 @@ body {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 8px 14px;
-  min-width: 84px;
+  min-width: 96px;
 }
 
 .eta-num {
-  font-size: 28px;
+  font-size: 36px;
   font-weight: 800;
   color: var(--brand);
   line-height: 1.1;
 }
 
-/* Skip Empty Stops Banner */
-.skip-banner {
-  border-right: 4px solid var(--brand);
-}
-
-.save-sum {
-  margin: 0 0 8px;
-  font-size: 14px;
-}
-
-.row-item {
+/* Ready Requests List (bottom sheet) */
+.req-list {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
 }
 
-.row-item:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-
-/* Station Demand List */
-.stop-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.req-empty {
+  margin: 0;
+  text-align: center;
   padding: 10px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 14.5px;
 }
 
-.stop-row:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-
-.stop-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+.req-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-right: 4px solid var(--info);
+  border-radius: 10px;
   background: var(--card);
-  border: 2.5px solid var(--mute);
-  flex: none;
 }
 
-.stop-row.next {
+.req-row.accepted {
+  border-right-color: var(--ok);
+}
+
+.req-row.boarding {
+  border-right-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.req-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.req-info strong {
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.req-state {
+  font-size: 16px;
   font-weight: 800;
-  color: var(--brand);
 }
 
-.stop-row.next .stop-dot {
-  border-color: var(--brand);
-  background: var(--brand);
-}
-
-.stop-row.passed {
-  opacity: 0.5;
-}
-
-.chip {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 700;
-  border-radius: 6px;
-  padding: 3px 9px;
-  background: var(--bg-subtle);
-  color: var(--mute);
-}
-
-.chip.info {
-  background: var(--info-bg);
+.req-state.wait {
   color: var(--info);
 }
 
-.chip.warn {
-  background: var(--warn-bg);
+.req-state.acc {
+  color: var(--ok);
+}
+
+.req-state.brd {
   color: var(--warn);
+}
+
+.req-count {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.req-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.req-actions .btn {
+  font-size: 16px;
+  padding: 12px 10px;
+}
+
+/* Map Pins: students (anonymous), route terminals */
+.pin.req {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  border-radius: 13px;
+  padding: 0 4px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  background: var(--info);
+}
+
+.pin.req.acc {
+  background: var(--ok);
+}
+
+.pin.req.brd {
+  background: var(--warn);
+}
+
+.pin.term {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  border-radius: 12px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  background: var(--ink-soft);
+}
+
+.pin.term.start {
+  background: var(--brand);
 }
 
 /* Inline Chat */

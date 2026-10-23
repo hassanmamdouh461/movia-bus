@@ -5,17 +5,23 @@
   if (!MB) return;
   const app = document.getElementById('app');
   const TOTAL_MIN = Math.round((MB.TRIP_MS / 60000) * 3);
-  const REPORT_CATS = ['تأخير الحافلة', 'نظافة الحافلة', 'سلوك السائق', 'تجاوز محطة', 'أخرى'];
-  const KIND_LABEL = { bus: 'اقتراب الحافلة', driver: 'تحديث السائق', cancel: 'إلغاء وبديل', booking: 'تأكيد حجز', waitlist: 'قائمة الانتظار', sos: 'طوارئ SOS', info: 'إشعار' };
-  const KIND_CLS = { bus: 'info', driver: 'ok', cancel: 'bad', booking: 'ok', waitlist: 'warn', sos: 'bad', info: '' };
+  const REPORT_CATS = ['تأخير الحافلة', 'نظافة الحافلة', 'سلوك السائق', 'تجاوز مكان الركوب', 'أخرى'];
+  const KIND_LABEL = { bus: 'اقتراب الحافلة', driver: 'تحديث السائق', cancel: 'إلغاء وبديل', booking: 'تأكيد حجز', waitlist: 'قائمة الانتظار', info: 'إشعار' };
+  const KIND_CLS = { bus: 'info', driver: 'ok', cancel: 'bad', booking: 'ok', waitlist: 'warn', info: '' };
   const BOOK_STATUS = { confirmed: 'مؤكد', cancelled: 'ملغي', missed: 'فاتتك الرحلة', trip_cancelled: 'ألغيت الرحلة' };
   const VIEWS = ['home', 'book', 'chat', 'alerts'];
-  const QUICK_REPLIES = ['أنا منتظر عند المحطة', 'كم دقيقة للوصول؟', 'تمام يا كابتن شكراً'];
+  const QUICK_REPLIES = ['أنا منتظر في مكاني', 'كم دقيقة للوصول؟', 'تمام يا كابتن شكراً'];
+  // pickup (Ready) status -> chip text / badge class
+  const PK_LABEL = {
+    waiting: 'في انتظار السواق', accepted: 'السواق هيقف لك', boarding: 'الباص واقف — اركب',
+    boarded: 'تم الركوب', skipped: 'السواق مش هيقدر يقف — أقرب رحلة', passed: 'الباص عدّى مكانك',
+  };
+  const PK_CLS = { waiting: 'warn', accepted: 'ok', boarding: 'ok', boarded: 'ok', skipped: 'bad', passed: 'bad' };
 
   const draft = {
     route: 'r1',
-    readyStation: '',
-    readyVirtual: false,
+    pickMode: null,     // trip id while the student is choosing a point on the map
+    locating: null,     // trip id while geolocation is being requested
     chat: {},
     rate: {},
     report: { cat: REPORT_CATS[0], trip: '', text: '' },
@@ -31,12 +37,16 @@
   function uid(p) { return p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function trip(id) { return id ? MB.trip(id) : undefined; }
   function label(t) { return MB.tripLabel(t); }
-  function routeDir(t) { return MB.R[t.routeId].name + ' · ' + (t.direction === 'go' ? 'ذهاب' : 'عودة'); }
-  function stName(id) { return MB.S[id] ? MB.S[id].name : '—'; }
   function firstName(full) { return String(full || '').split(' ')[0]; }
   function drvFirst(t) { const d = MB.drv[t.driverId]; return d ? String(d.name).replace(/^أ\.\s*/, '').split(' ')[0] : 'السائق'; }
   function drvInitial(t) { const d = MB.drv[t.driverId]; const n = d ? String(d.name).replace(/^أ\.\s*/, '') : ''; return n.charAt(0) || 'س'; }
   function seatsLeft(t) { return Math.max(0, t.capacity - t.booked); }
+  // start / end names of a trip's direction
+  function endNames(t) {
+    const r = MB.R[t.routeId];
+    return t.direction === 'go' ? { from: r.fromName, to: r.toName } : { from: r.toName, to: r.fromName };
+  }
+  function routeLine(t) { const e = endNames(t); return 'من ' + e.from + ' → إلى ' + e.to; }
   function statusBadge(t) {
     const cls = { scheduled: 'info', at_start: 'warn', en_route: 'ok', arrived: '', cancelled: 'bad' }[t.status] || '';
     return '<span class="badge ' + cls + '">' + esc(MB.statusLabel[t.status] || t.status) + '</span>';
@@ -76,38 +86,84 @@
       || s.trips[0]
       || null;
   }
+  // my pickup point (Ready) on a trip — the most recent one I created there
+  function myPk(s, tid) {
+    let found = null;
+    (s.pickups || []).forEach((k) => { if (k.tripId === tid && k.mine) found = k; });
+    return found;
+  }
+  function pkChip(pk) {
+    return '<span class="badge ' + PK_CLS[pk.status] + '">' + esc(PK_LABEL[pk.status] || pk.status) + '</span>';
+  }
   function trackUrl(tid) {
     const base = (location.origin && location.origin !== 'null') ? location.origin + location.pathname : location.href.split('#')[0];
     return base + '#track=' + tid;
   }
-  function etaText(t, sid) {
+
+  // ETA model: before Ready -> bus's remaining trip time; after Ready -> time until the bus reaches my pickup
+  function etaInfo(t) {
+    if (!t || t.status !== 'en_route') return null;
+    const pk = myPk(MB.state, t.id);
+    if (!pk || pk.status === 'boarded') return { kind: 'min', m: MB.etaToProgress(t, 1) };
+    if (pk.status === 'waiting' || pk.status === 'accepted') {
+      const m = MB.etaToPickup(t, pk);
+      return m === null ? { kind: 'passed' } : { kind: 'min', m };
+    }
+    if (pk.status === 'boarding') return { kind: 'now' };
+    return { kind: pk.status === 'skipped' ? 'skipped' : 'passed' };
+  }
+  function fmtEta(info) {
+    if (info.kind === 'min') return info.m <= 1 ? 'أقل من دقيقة' : info.m + ' دقيقة';
+    if (info.kind === 'now') return 'الآن';
+    if (info.kind === 'skipped') return 'مش هيقف';
+    return 'مرت الحافلة';
+  }
+  function etaText(t) {
     if (!t) return '—';
     if (t.status === 'scheduled') return 'الموعد ' + t.time;
-    if (t.status === 'at_start') return 'في محطة البداية';
+    if (t.status === 'at_start') return 'في بداية الخط';
     if (t.status === 'arrived') return 'وصلت';
     if (t.status === 'cancelled') return 'ملغاة';
-    if (MB.stopsOf(t).indexOf(sid) < 0) return '—';
-    const m = MB.etaMinutes(t, sid);
-    if (m === null) return 'مرت الحافلة';
-    return m <= 1 ? 'أقل من دقيقة' : m + ' دقيقة';
+    const info = etaInfo(t);
+    return info ? fmtEta(info) : '—';
   }
-  function etaBigHtml(t, sid) {
+  function endText(t) {
+    if (t && t.status === 'en_route') return fmtEta({ kind: 'min', m: MB.etaToProgress(t, 1) });
+    return etaText(t);
+  }
+  function etaBigHtml(t) {
     if (t.status === 'en_route') {
-      const m = MB.etaMinutes(t, sid);
-      if (m === null) return 'مرت<small>المحطة</small>';
-      return (m <= 1 ? 1 : m) + '<small>دقيقة</small>';
+      const info = etaInfo(t);
+      if (info.kind === 'min') return (info.m <= 1 ? 1 : info.m) + '<small>دقيقة</small>';
+      if (info.kind === 'now') return 'الآن<small>اركب الآن</small>';
+      if (info.kind === 'skipped') return 'مش هيقف<small>السواق معتذر</small>';
+      return 'مرت<small>الحافلة عدّت مكانك</small>';
     }
     if (t.status === 'scheduled') return esc(t.time) + '<small>موعد الانطلاق</small>';
-    if (t.status === 'at_start') return 'الآن<small>بمحطة البداية</small>';
+    if (t.status === 'at_start') return 'الآن<small>في بداية الخط</small>';
     if (t.status === 'arrived') return 'وصلت<small>انتهت الرحلة</small>';
     return '—';
   }
-  function stepperHtml(t, sid) {
-    const m = t.status === 'en_route' ? MB.etaMinutes(t, sid) : null;
-    const near = t.status === 'en_route' && m !== null && m <= 3;
-    const idx = t.status === 'arrived' ? 2 : near ? 1 : (t.status === 'en_route' ? 0 : -1);
-    return '<ol class="stepper">' + ['في الطريق', 'اقتربت من محطتك', 'وصلت الوجهة'].map((n, i) =>
+  function stepperHtml(t) {
+    const info = etaInfo(t);
+    const pk = myPk(MB.state, t.id);
+    const pkOpen = pk && (pk.status === 'waiting' || pk.status === 'accepted');
+    const near = !!info && info.kind === 'min' && pkOpen && info.m <= 3;
+    const idx = t.status === 'arrived' ? 2
+      : (info && info.kind === 'now') || near ? 1
+        : (t.status === 'en_route' ? 0 : -1);
+    return '<ol class="stepper">' + ['في الطريق', 'اقتربت من مكانك', 'وصلت الوجهة'].map((n, i) =>
       '<li class="' + (i < idx ? 'done' : i === idx ? 'cur' : '') + '">' + n + '</li>').join('') + '</ol>';
+  }
+  function etaRowsHtml(t) {
+    const pk = myPk(MB.state, t.id);
+    const ends = endNames(t);
+    let out = '';
+    if (pk) {
+      out += '<div class="trip-row"><span>مكان ركوبك</span><span class="mute" data-live="eta" data-trip="' + t.id + '">' + esc(etaText(t)) + '</span></div>';
+    }
+    out += '<div class="trip-row"><span>نهاية الخط · ' + esc(ends.to) + '</span><span class="mute" data-live="endeta" data-trip="' + t.id + '">' + esc(endText(t)) + '</span></div>';
+    return out;
   }
   function note(text, kind, tripId, altTripId) {
     return { id: uid('n'), ts: now(), text, read: false, kind: kind || 'info', tripId: tripId || null, altTripId: altTripId || null };
@@ -130,28 +186,23 @@
     const t = pickActive(s);
     if (!t || s.chat.some((c) => c.tripId === t.id)) return;
     const who = firstName(s.me.name) || 'أحمد';
-    const st = s.me.favStation ? stName(s.me.favStation) : 'محطة المترو';
     const n = now();
     [
       ['driver', 'أهلاً يا ' + who + '، أنا الكابتن ' + drvFirst(t) + '. الحافلة في المسار وموعدنا مضبوط.', n - 14 * 60000],
-      ['student', 'تمام يا كابتن، أنا منتظر عند ' + st + '.', n - 11 * 60000],
-      ['driver', 'ممتاز، ظاهر عندي على الخريطة إنك مسجل انتظار في المحطة.', n - 8 * 60000],
+      ['student', 'تمام يا كابتن، أنا منتظر في مكاني على المسار.', n - 11 * 60000],
+      ['driver', 'تمام، لما تضغط Ready وتحدد مكانك هشوفه على الخريطة.', n - 8 * 60000],
     ].forEach(([from, text, ts]) => s.chat.push({ id: uid('c'), tripId: t.id, from, text, ts }));
   }
 
   function ensure(s) {
     s.me = s.me || {};
     s.me.seen = s.me.seen || {};
-    s.me.ready = s.me.ready || {};
     s.me.approachDone = s.me.approachDone || {};
-    s.me.virtualStops = s.me.virtualStops || {};
     if (s.me.chatSeenTs == null) s.me.chatSeenTs = now();
     if (s.me.chatReadTs == null) s.me.chatReadTs = now();
-    s.waiting = s.waiting || {};
-    ['myBookings', 'waitlistMine', 'sharedLinks', 'notifications', 'reports', 'ratings', 'chat'].forEach((k) => {
+    ['myBookings', 'waitlistMine', 'sharedLinks', 'notifications', 'reports', 'ratings', 'chat', 'pickups'].forEach((k) => {
       if (!Array.isArray(s[k])) s[k] = [];
     });
-    s.trips.forEach((t) => { s.waiting[t.id] = s.waiting[t.id] || {}; });
     seedChat(s);
   }
 
@@ -242,52 +293,76 @@
     toast('تم إلغاء الحجز');
   }
 
-  function toggleReady(tid) {
+  // Ready: send my pickup point (snapped onto the path by MB.requestPickup). Returns false if the bus already passed it.
+  function submitPickup(tid, lat, lng) {
+    const t = trip(tid);
+    if (!t) return true;
+    const pos = MB.position(t);
+    const sn = MB.snap(t, lat, lng);
+    if (pos && sn.progress < pos.progress - 0.005) {
+      toast('الباص عدّى المكان ده — اختار مكان قدّام الباص');
+      return false;
+    }
+    MB.requestPickup(tid, lat, lng);
+    draft.pickMode = null;
+    draft.locating = null;
+    toast('تم إرسال مكانك للسائق');
+    return true;
+  }
+
+  function readyTap(tid) {
     const s = MB.state;
     const t = trip(tid);
-    if (!t) return;
-    const currentReady = s.me.ready[tid];
-    if (currentReady) {
-      MB.update((st) => {
-        st.waiting[tid] = st.waiting[tid] || {};
-        st.waiting[tid][currentReady] = Math.max(0, (st.waiting[tid][currentReady] || 0) - 1);
-        delete st.me.ready[tid];
-        delete st.me.virtualStops[tid];
-      });
-      toast('تم إلغاء تسجيل الجاهزية');
-      return;
+    if (!t || !bookingFor(s, tid) || (t.status !== 'at_start' && t.status !== 'en_route')) {
+      return toast('زر الجاهزية متاح لما تكون رحلتك المحجوزة جاهزة أو في الطريق');
     }
-    const stops = MB.stopsOf(t);
-    const chosen = (draft.readyStation && stops.indexOf(draft.readyStation) >= 0)
-      ? draft.readyStation
-      : (stops.indexOf(s.me.favStation) >= 0 ? s.me.favStation : stops[0]);
-    MB.update((st) => {
-      st.waiting[tid] = st.waiting[tid] || {};
-      st.waiting[tid][chosen] = (st.waiting[tid][chosen] || 0) + 1;
-      st.me.ready[tid] = chosen;
-      if (draft.readyVirtual) st.me.virtualStops[tid] = chosen;
-    });
-    toast('تم إشعار السائق فوراً بأنك جاهز في «' + stName(chosen) + '»');
+    if (!navigator.geolocation) {
+      draft.pickMode = tid;
+      return render();
+    }
+    draft.locating = tid;
+    render();
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        draft.locating = null;
+        if (!submitPickup(tid, p.coords.latitude, p.coords.longitude)) draft.pickMode = tid;
+        render();
+      },
+      () => {
+        draft.locating = null;
+        draft.pickMode = tid;
+        toast('تعذر تحديد موقعك — اضغط على الخريطة');
+        render();
+      },
+      { timeout: 4000, maximumAge: 30000, enableHighAccuracy: false }
+    );
+  }
+
+  function readyDemo(tid) {
+    const t = trip(tid);
+    if (!t) return;
+    const pos = MB.position(t);
+    const p0 = pos ? pos.progress : 0;
+    const target = Math.min(0.98, p0 + 0.12);
+    const poly = MB.polyOf(t);
+    const pt = poly[Math.round(target * (poly.length - 1))];
+    if (submitPickup(tid, pt[0], pt[1])) render();
+    else { draft.pickMode = null; render(); }
+  }
+
+  function pickOnMap(tid, lat, lng) {
+    if (submitPickup(tid, lat, lng)) render();
+  }
+
+  function cancelPickup(id) {
+    MB.cancelPickup(id);
+    toast('تم إلغاء تسجيل الجاهزية');
   }
 
   function shareTrip(tid) {
     const link = trackUrl(tid);
     MB.update((st) => st.sharedLinks.push({ id: uid('L'), tripId: tid, url: link, ts: now(), by: st.me.name }));
     copyText(link);
-  }
-
-  function sendSos(tid) {
-    const t = trip(tid) || pickActive(MB.state);
-    if (!t) return;
-    MB.update((st) => {
-      const msg = 'نداء طوارئ SOS من الطالب «' + st.me.name + '» في رحلة ' + label(t) + ' — الحافلة ' + MB.bus[t.busId].plate;
-      st.notifications.unshift(note(msg, 'sos', t.id));
-      st.reports.unshift({
-        id: uid('sos'), ts: now(), studentName: st.me.name,
-        category: 'نداء طوارئ SOS', text: msg, status: 'open', assignee: 'غرفة العمليات', tripId: t.id,
-      });
-    });
-    toast('تم إرسال تنبيه طوارئ فوري للإدارة ولسائق الحافلة');
   }
 
   function sendChat(tid, text) {
@@ -321,38 +396,72 @@
     toast('تم إرسال البلاغ للإدارة بنجاح');
   }
 
+  // Notify once when the bus is 2 minutes or less from my pickup
+  function checkApproach() {
+    const s = MB.state;
+    if (!s) return;
+    let hit = null;
+    s.trips.forEach((t) => {
+      if (hit || t.status !== 'en_route') return;
+      const pk = myPk(s, t.id);
+      if (!pk || (pk.status !== 'waiting' && pk.status !== 'accepted')) return;
+      if (s.me.approachDone[pk.id]) return;
+      const m = MB.etaToPickup(t, pk);
+      if (m !== null && m <= 2) hit = { tid: t.id, pid: pk.id };
+    });
+    if (hit) {
+      MB.update((st) => {
+        st.me.approachDone[hit.pid] = true;
+        st.notifications.unshift(note('الحافلة اقتربت منك', 'bus', hit.tid));
+      });
+    }
+  }
+
   // ---------- Views ----------
+  function readyBoxHtml(s, t) {
+    const pk = myPk(s, t.id);
+    const eligible = !!bookingFor(s, t.id) && (t.status === 'at_start' || t.status === 'en_route');
+    let body;
+    if (pk && (pk.status === 'waiting' || pk.status === 'accepted')) {
+      body = '<div class="row"><span class="grow">' + pkChip(pk) + '</span>' +
+        '<button class="btn sec sm" type="button" data-act="pk-cancel" data-id="' + pk.id + '">إلغاء</button></div>';
+    } else if (pk && (pk.status === 'boarding' || pk.status === 'boarded')) {
+      body = '<div class="row"><span class="grow">' + pkChip(pk) + '</span></div>';
+    } else if (draft.locating === t.id) {
+      body = '<p class="mute" style="margin:0">جاري تحديد موقعك…</p>';
+    } else if (draft.pickMode === t.id) {
+      body = '<p style="margin:0 0 8px;font-weight:700">اضغط على الخريطة لتحديد مكانك</p>' +
+        '<div class="row"><button class="btn sec sm" type="button" data-act="ready-demo" data-trip="' + t.id + '">استخدم موقع تجريبي</button>' +
+        '<button class="btn sec sm" type="button" data-act="pick-cancel" data-trip="' + t.id + '">إلغاء</button></div>';
+    } else {
+      body = (pk ? '<div class="row" style="margin-bottom:8px"><span class="grow">' + pkChip(pk) + '</span></div>' : '') +
+        (eligible
+          ? '<div class="row"><span class="grow mute" style="font-size:13px">اضغط عشان السواق يعرف مكانك ويقف لك.</span>' +
+            '<button class="btn" type="button" data-act="ready" data-trip="' + t.id + '">أنا جاهز (Ready)</button></div>'
+          : '<p class="mute" style="margin:0">زر Ready بيظهر لما رحلتك المحجوزة تكون جاهزة للانطلاق أو في الطريق.</p>');
+    }
+    return '<div class="ready-box"><h4>زر الجاهزية (Ready) — إشعار السائق بمكانك</h4>' + body + '</div>';
+  }
+
   function renderHomeView(s) {
     const t = pickActive(s);
     if (!t) {
       return '<div class="card"><h3>لا توجد رحلات حالياً</h3><a class="btn" href="#book">احجز رحلة الآن</a></div>';
     }
-    const fav = s.me.favStation || MB.stopsOf(t)[1] || MB.stopsOf(t)[0];
     const drv = MB.drv[t.driverId] || { name: '—', rating: '—' };
     const bus = MB.bus[t.busId] || { plate: '—' };
-    const stops = MB.stopsOf(t);
-    const last = stops[stops.length - 1];
-    const readyAt = s.me.ready[t.id];
+    const pk = myPk(s, t.id);
+    const pkLive = !!pk && (pk.status === 'waiting' || pk.status === 'accepted' || pk.status === 'boarding');
+    const ends = endNames(t);
     const lastLink = s.sharedLinks.filter((l) => l.tripId === t.id).pop();
-    const skip = t.status === 'en_route' ? MB.emptyAhead(t).filter((id) => id !== fav && id !== readyAt) : [];
     const altTrip = nextTripFor(s, t);
-
-    const chosenReady = readyAt || (draft.readyStation && stops.indexOf(draft.readyStation) >= 0 ? draft.readyStation : (stops.indexOf(fav) >= 0 ? fav : stops[0]));
-    const stopOptions = stops.map((sid) =>
-      '<option value="' + sid + '"' + (sid === chosenReady ? ' selected' : '') + '>' + esc(stName(sid)) + '</option>'
-    ).join('');
+    const altTitle = pk && pk.status === 'passed' ? 'الباص عدّى مكانك — بديل فوري متاح'
+      : pk && pk.status === 'skipped' ? 'السواق مش هيقدر يقف — أقرب رحلة متاحة'
+        : 'فاتك الموعد؟ بديل فوري متاح';
 
     const tripSelectorOpts = s.trips.filter((x) => x.status !== 'cancelled').slice(0, 12).map((x) =>
       '<option value="' + x.id + '"' + (x.id === t.id ? ' selected' : '') + '>' + esc(label(x)) + ' (' + esc(MB.statusLabel[x.status]) + ')</option>'
     ).join('');
-
-    const stopsListHtml = stops.map((sid, i) => {
-      const isMyStop = sid === (readyAt || fav);
-      return '<div class="trip-row" style="' + (isMyStop ? 'font-weight:700;color:var(--brand)' : '') + '">' +
-        '<span>' + (i + 1) + '. ' + esc(stName(sid)) + (isMyStop ? ' <span class="badge ok">محطتك</span>' : '') + '</span>' +
-        '<span class="mute" data-live="eta" data-trip="' + t.id + '" data-station="' + sid + '">' + esc(etaText(t, sid)) + '</span>' +
-      '</div>';
-    }).join('');
 
     return '<div class="home-grid">' +
       /* Right Column: Active Trip Details & Actions */
@@ -362,6 +471,7 @@
             '<span class="avatar">' + esc(drvInitial(t)) + '</span>' +
             '<div class="grow">' +
               '<div class="mute">' + esc(label(t)) + '</div>' +
+              '<div class="mute" style="font-size:12.5px">' + esc(routeLine(t)) + '</div>' +
               '<b class="tc-driver">' + esc(drv.name) + '</b>' +
               '<div class="meta"><span class="plate">حافلة: ' + esc(bus.plate) + '</span><span class="rating">★ ' + esc(drv.rating) + '</span></div>' +
             '</div>' +
@@ -370,44 +480,24 @@
 
           '<div class="eta-panel">' +
             '<div class="eta-cell">' +
-              '<span class="mute">الوصول لمحطتك (' + esc(stName(readyAt || fav)) + ')</span>' +
-              '<div class="eta-big" data-live="etabig" data-trip="' + t.id + '" data-station="' + (readyAt || fav) + '">' + etaBigHtml(t, readyAt || fav) + '</div>' +
+              '<span class="mute">' + (pkLive ? 'الوصول لمكانك للركوب' : 'الوقت المتبقي للرحلة') + '</span>' +
+              '<div class="eta-big" data-live="etabig" data-trip="' + t.id + '">' + etaBigHtml(t) + '</div>' +
             '</div>' +
             '<div class="eta-cell">' +
-              '<span class="mute">الوصول لنهاية الخط (' + esc(stName(last)) + ')</span>' +
-              '<div class="eta-big" style="color:var(--ink)" data-live="eta" data-trip="' + t.id + '" data-station="' + last + '">' + esc(etaText(t, last)) + '</div>' +
+              '<span class="mute">الوصول لنهاية الخط (' + esc(ends.to) + ')</span>' +
+              '<div class="eta-big" style="color:var(--ink)" data-live="endeta" data-trip="' + t.id + '">' + esc(endText(t)) + '</div>' +
             '</div>' +
           '</div>' +
 
-          '<div data-live="stepper" data-trip="' + t.id + '" data-station="' + (readyAt || fav) + '">' + stepperHtml(t, readyAt || fav) + '</div>' +
+          '<div data-live="stepper" data-trip="' + t.id + '">' + stepperHtml(t) + '</div>' +
 
-          (skip.length
-            ? '<div class="note"><b>رحلة أقصر:</b> السائق سيتخطى ' + skip.length + ' محطة خالية في الطريق (' + skip.map(stName).join('، ') + ') لتوفير الوقت.</div>'
-            : '') +
-
-          /* 1.1 Ready Feature Box */
-          '<div class="ready-box">' +
-            '<h4>1.1 زر الجاهزية (Ready) — إشعار السائق بوجودك على المحطة</h4>' +
-            (readyAt
-              ? '<div class="row"><span class="grow">أنت مسجل <b>جاهز للصعود</b> في محطة: <b>' + esc(stName(readyAt)) + '</b>' + (s.me.virtualStops[t.id] ? ' (محطة افتراضية)' : '') + '</span>' +
-                '<button class="btn sec sm" type="button" data-act="ready-toggle" data-trip="' + t.id + '">إلغاء الجاهزية</button></div>'
-              : '<div class="row" style="margin-bottom:8px">' +
-                  '<select class="grow" data-field="ready-station" aria-label="اختر محطة الركوب">' + stopOptions + '</select>' +
-                  '<button class="btn" type="button" data-act="ready-toggle" data-trip="' + t.id + '">أنا جاهز (Ready)</button>' +
-                '</div>' +
-                '<label style="margin:0;font-weight:500;display:flex;align-items:center;gap:6px;cursor:pointer">' +
-                  '<input type="checkbox" style="width:auto" data-field="ready-virtual"' + (draft.readyVirtual ? ' checked' : '') + '>' +
-                  '<span>تعيينها كمحطة افتراضية على الخريطة للسائق</span>' +
-                '</label>'
-            ) +
-          '</div>' +
+          readyBoxHtml(s, t) +
 
           /* Quick Actions Grid */
           '<div class="actions-grid">' +
             '<button class="act-btn" type="button" data-act="share" data-trip="' + t.id + '">مشاركة التتبع مع الأهل</button>' +
             '<a class="act-btn" href="#chat">مراسلة السائق بالشات</a>' +
             '<a class="act-btn" href="#book">حجز أو تعديل موعد</a>' +
-            '<button class="act-btn sos" type="button" data-act="sos" data-trip="' + t.id + '">زر طوارئ SOS</button>' +
           '</div>' +
 
           (lastLink
@@ -424,7 +514,7 @@
           ? '<section class="card">' +
               '<div class="row">' +
                 '<div class="grow">' +
-                  '<h3 style="margin:0 0 2px">فاتك الموعد؟ بديل فوري متاح</h3>' +
+                  '<h3 style="margin:0 0 2px">' + esc(altTitle) + '</h3>' +
                   '<div class="mute">أقرب رحلة قادمة: <b>' + esc(label(altTrip)) + '</b> · متبقي ' + seatsLeft(altTrip) + ' مقعد</div>' +
                 '</div>' +
                 '<button class="btn sm" type="button" data-act="book" data-trip="' + altTrip.id + '">حجز البديل فوراً</button>' +
@@ -433,7 +523,7 @@
           : '') +
       '</div>' +
 
-      /* Left Column: Live Map & Station ETAs */
+      /* Left Column: Live Map & ETAs */
       '<div>' +
         '<section class="card map-card">' +
           '<div class="map-head">' +
@@ -441,17 +531,11 @@
             '<select data-field="map-trip" aria-label="اختر الرحلة المعروضة">' + tripSelectorOpts + '</select>' +
           '</div>' +
           '<div id="mapBox" class="map-box"></div>' +
-          '<div class="row" style="margin-top:10px;justify-content:space-between">' +
-            '<span class="mute">محطتي المفضلة لحساب وقت الوصول:</span>' +
-            '<select data-field="fav" style="width:auto;min-width:180px;padding:5px 10px">' +
-              MB.stations.map((st) => '<option value="' + st.id + '"' + (st.id === s.me.favStation ? ' selected' : '') + '>' + esc(st.name) + '</option>').join('') +
-            '</select>' +
-          '</div>' +
         '</section>' +
 
         '<section class="card">' +
-          '<h3>محطات الخط ووقت الوصول المتوقع</h3>' +
-          stopsListHtml +
+          '<h3>وقت الوصول المتوقع</h3>' +
+          etaRowsHtml(t) +
         '</section>' +
       '</div>' +
     '</div>';
@@ -504,7 +588,7 @@
 
     return '<div class="card">' +
         '<div class="row" style="justify-content:space-between">' +
-          '<div><h2 style="margin:0 0 4px">حجز المقاعد وقائمة الانتظار</h2><div class="mute">خط السير: ' + route.stops.map(stName).join(' ← ') + '</div></div>' +
+          '<div><h2 style="margin:0 0 4px">حجز المقاعد وقائمة الانتظار</h2><div class="mute">' + esc('من ' + route.fromName + ' → إلى ' + route.toName) + '</div></div>' +
           '<div class="row">' + tabs + '</div>' +
         '</div>' +
       '</div>' +
@@ -556,7 +640,9 @@
     const curStars = (t && draft.rate[t.id]) || 5;
     const d = draft.report;
     const list = s.notifications.slice(0, 20);
-    const rules = (s.policies && s.policies.rules) || [];
+    const rules = ((s.policies && s.policies.rules) || []).map((r) =>
+      /محط/.test(r) ? 'الباص بيمشي في مساره المحدد باستمرار.' : r
+    );
 
     const notifHtml = list.map((n) => {
       const alt = n.altTripId ? trip(n.altTripId) : null;
@@ -622,16 +708,16 @@
     if (!t) return '<div class="card"><h3>الرابط غير صالح</h3><a class="btn" href="#home">العودة</a></div>';
     const drv = MB.drv[t.driverId] || { name: '—' };
     const bus = MB.bus[t.busId] || { plate: '—' };
-    const stops = MB.stopsOf(t);
     return '<section class="card">' +
         '<div class="row" style="justify-content:space-between">' +
-          '<div><h2 style="margin:0">متابعة الرحلة المباشرة للأهل</h2><div class="mute">' + esc(label(t)) + ' · حافلة ' + esc(bus.plate) + ' · السائق ' + esc(drv.name) + '</div></div>' +
+          '<div><h2 style="margin:0">متابعة الرحلة المباشرة للأهل</h2><div class="mute">' + esc(label(t)) + ' · حافلة ' + esc(bus.plate) + ' · السائق ' + esc(drv.name) + '</div>' +
+          '<div class="mute" style="font-size:12.5px">' + esc(routeLine(t)) + '</div></div>' +
           '<a class="btn sec sm" href="#home">العودة لواجهة الطالب</a>' +
         '</div>' +
       '</section>' +
       '<div class="card map-card"><div id="mapBox" class="map-box" style="height:380px"></div></div>' +
-      '<section class="card"><h3>محطات المسار ووقت الوصول</h3>' +
-        stops.map((sid, i) => '<div class="trip-row"><span>' + (i + 1) + '. ' + esc(stName(sid)) + '</span><span class="mute" data-live="eta" data-trip="' + t.id + '" data-station="' + sid + '">' + esc(etaText(t, sid)) + '</span></div>').join('') +
+      '<section class="card"><h3>وقت الوصول المتوقع</h3>' +
+        etaRowsHtml(t) +
       '</section>';
   }
 
@@ -647,15 +733,29 @@
     if (!el || !t || !window.L) return;
     const L = window.L;
     const route = MB.R[t.routeId];
+    const poly = MB.polyOf(t);
+    const ends = endNames(t);
     const map = L.map(el, { scrollWheelZoom: false }).setView([30.04, 31.25], 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
-    const line = L.polyline(MB.polyOf(t), { color: route.color, weight: 5, opacity: 0.9 }).addTo(map);
-    MB.stopsOf(t).forEach((sid, i) => {
-      const st = MB.S[sid];
-      L.marker([st.lat, st.lng], {
-        icon: L.divIcon({ className: '', html: '<div class="pin">' + (i + 1) + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] }),
-      }).bindTooltip(esc((i + 1) + '. ' + st.name)).addTo(map);
-    });
+    el.classList.toggle('picking', draft.pickMode === tid);
+    const line = L.polyline(poly, { color: route.color, weight: 5, opacity: 0.9 }).addTo(map);
+    // route ends only: start and finish markers
+    L.marker(poly[0], {
+      icon: L.divIcon({ className: '', html: '<div class="pin">من</div>', iconSize: [26, 26], iconAnchor: [13, 13] }),
+    }).bindTooltip(esc(ends.from)).addTo(map);
+    L.marker(poly[poly.length - 1], {
+      icon: L.divIcon({ className: '', html: '<div class="pin">إلى</div>', iconSize: [26, 26], iconAnchor: [13, 13] }),
+    }).bindTooltip(esc(ends.to)).addTo(map);
+    // my pickup point (pulsing while still active)
+    const pk = myPk(MB.state, t.id);
+    if (pk) {
+      const live = pk.status === 'waiting' || pk.status === 'accepted' || pk.status === 'boarding';
+      L.marker([pk.lat, pk.lng], {
+        icon: L.divIcon({ className: '', html: '<div class="pk-pin' + (live ? ' live' : '') + '"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+        zIndexOffset: 800,
+      }).bindTooltip(esc(PK_LABEL[pk.status] || '')).addTo(map);
+    }
+    map.on('click', (e) => { if (draft.pickMode === tid) pickOnMap(tid, e.latlng.lat, e.latlng.lng); });
     map.fitBounds(line.getBounds(), { padding: [28, 28] });
     mapCtl = { tripId: tid, map, bus: null, line };
     tickMap();
@@ -728,17 +828,21 @@
   }
 
   function tick() {
+    checkApproach();
     if (mapCtl && mapCtl.map) tickMap();
     document.querySelectorAll('[data-live="eta"]').forEach((el) => {
-      el.textContent = etaText(trip(el.dataset.trip), el.dataset.station);
+      el.textContent = etaText(trip(el.dataset.trip));
+    });
+    document.querySelectorAll('[data-live="endeta"]').forEach((el) => {
+      el.textContent = endText(trip(el.dataset.trip));
     });
     document.querySelectorAll('[data-live="etabig"]').forEach((el) => {
       const t = trip(el.dataset.trip);
-      if (t) el.innerHTML = etaBigHtml(t, el.dataset.station);
+      if (t) el.innerHTML = etaBigHtml(t);
     });
     document.querySelectorAll('[data-live="stepper"]').forEach((el) => {
       const t = trip(el.dataset.trip);
-      if (t) el.innerHTML = stepperHtml(t, el.dataset.station);
+      if (t) el.innerHTML = stepperHtml(t);
     });
   }
 
@@ -748,10 +852,12 @@
     const d = el.dataset;
     switch (d.act) {
       case 'route': draft.route = d.route; render(); break;
-      case 'ready-toggle': toggleReady(d.trip); break;
+      case 'ready': readyTap(d.trip); break;
+      case 'ready-demo': readyDemo(d.trip); break;
+      case 'pick-cancel': draft.pickMode = null; draft.locating = null; render(); break;
+      case 'pk-cancel': cancelPickup(d.id); break;
       case 'share': shareTrip(d.trip); break;
       case 'copy': copyText(d.link); break;
-      case 'sos': sendSos(d.trip); break;
       case 'chip': sendChat(d.trip, d.text); break;
       case 'chat-send': sendChat(d.trip); break;
       case 'book': bookAction(d.trip); break;
@@ -771,16 +877,9 @@
     const el = e.target;
     const f = el.dataset && el.dataset.field;
     if (!f) return;
-    if (f === 'fav') {
-      MB.update((st) => { st.me.favStation = el.value; });
-      toast('تم تحديث محطتك المفضلة');
-    } else if (f === 'map-trip') {
+    if (f === 'map-trip') {
       draft.mapTrip = el.value;
       render();
-    } else if (f === 'ready-station') {
-      draft.readyStation = el.value;
-    } else if (f === 'ready-virtual') {
-      draft.readyVirtual = el.checked;
     } else if (f === 'report-cat') {
       draft.report.cat = el.value;
     }
@@ -800,7 +899,12 @@
     }
   });
 
-  window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
+  window.addEventListener('hashchange', () => {
+    draft.pickMode = null;
+    draft.locating = null;
+    window.scrollTo(0, 0);
+    render();
+  });
 
   MB.subscribe(() => {
     if (!busy()) render();
