@@ -100,13 +100,113 @@ body.track .subnav {
   flex-wrap: wrap;
 }
 
-.map-head select {
-  width: auto;
-  min-width: 200px;
-  max-width: 100%;
-  flex: 0 1 300px;
+.dir-switch {
+  display: inline-flex;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.dir-btn {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 16px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--ink-soft);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dir-btn:hover {
+  color: var(--ink);
+}
+
+.dir-btn.on {
+  background: var(--brand);
+  color: #fff;
+}
+
+.dir-box {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.dir-note {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 7px;
   padding: 7px 10px;
-  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.dir-note.ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: #b8e2cc;
+}
+
+.dir-note.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-color: #f3d58a;
+}
+
+.dir-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 215px;
+  overflow-y: auto;
+  padding-inline-end: 2px;
+}
+
+.dir-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  flex-wrap: wrap;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dir-row.on {
+  border-color: var(--brand);
+  background: #f6fbf8;
+}
+
+.dir-row-info {
+  flex: 1 1 180px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.dir-row-info b {
+  display: block;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.dir-row-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .map-box {
@@ -545,10 +645,14 @@ body.track .subnav {
     font-size: 13px;
   }
 
-  .map-head select {
+  .dir-switch {
     width: 100%;
-    flex: 1 1 100%;
-    min-width: 0;
+  }
+
+  .dir-btn {
+    flex: 1;
+    text-align: center;
+    padding: 7px 12px;
   }
 
   .route-tabs {

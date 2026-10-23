@@ -77,7 +77,10 @@
           const id = 't' + n++;
           const driver = drivers[(ri + si) % drivers.length];
           const bus = buses[(ri + si) % buses.length];
-          const booked = Math.min(bus.capacity + (si === 1 ? 4 : 0), 8 + ((ri * 7 + si * 11 + (dir === 'go' ? 3 : 9)) % 30));
+          const isCrowdedDemo = (ri === 1 && si === 1 && dir === 'go');
+          const booked = isCrowdedDemo
+            ? bus.capacity + 4
+            : Math.min(bus.capacity - 6, 12 + ((ri * 7 + si * 11 + (dir === 'go' ? 3 : 9)) % 22));
           trips.push({
             id, routeId: r.id, direction: dir, time: pad(h) + ':' + pad(m),
             scheduledAt: todayAt(h, m), driverId: driver.id, busId: bus.id, capacity: bus.capacity,
@@ -91,10 +94,10 @@
       .concat(trips.filter((t) => t.routeId === 'r4' && t.direction === 'go').slice(0, 1))
       .concat(trips.filter((t) => t.routeId === 'r1' && t.direction === 'back').slice(1, 2));
     live.forEach((t, i) => { t.status = 'en_route'; t.startedAt = Date.now() - (1.2 + i * 1.8) * 60 * 1000; });
-    const atStartTrip = trips.find((t) => t.routeId === 'r1' && t.status === 'scheduled');
+    const atStartTrip = trips.find((t) => t.routeId === 'r1' && t.direction === 'go' && t.status === 'scheduled');
     if (atStartTrip) atStartTrip.status = 'at_start';
-    trips.filter((t) => t.status === 'scheduled' && t.scheduledAt < Date.now() - 60 * 60 * 1000)
-      .slice(0, 3).forEach((t) => { t.status = 'arrived'; t.startedAt = t.scheduledAt; });
+    trips.filter((t) => t.direction === 'back' && t.status === 'scheduled' && t.scheduledAt < Date.now() - 60 * 60 * 1000)
+      .slice(0, 2).forEach((t) => { t.status = 'arrived'; t.startedAt = t.scheduledAt; });
     return trips;
   }
 
