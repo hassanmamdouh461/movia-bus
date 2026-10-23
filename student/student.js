@@ -47,6 +47,8 @@
   }
   function routeLine(t) { const e = endNames(t); return 'من ' + e.from + ' → إلى ' + e.to; }
   function statusBadge(t) {
+    // "مجدولة" / "في الطريق" badges are intentionally not shown to students
+    if (t.status === 'scheduled' || t.status === 'en_route') return '';
     const cls = { scheduled: 'info', at_start: 'warn', en_route: 'ok', arrived: '', cancelled: 'bad' }[t.status] || '';
     return '<span class="badge ' + cls + '">' + esc(MB.statusLabel[t.status] || t.status) + '</span>';
   }
