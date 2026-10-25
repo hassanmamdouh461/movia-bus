@@ -132,12 +132,91 @@ body.track .subnav {
   color: #fff;
 }
 
+/* Compact summary bar when student already has a 'go' booking */
+.my-trip-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background: var(--ok-bg);
+  border: 1px solid #b8e2cc;
+  border-radius: 9px;
+  flex-wrap: wrap;
+}
+
+.my-trip-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.my-trip-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .dir-box {
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px;
   margin-bottom: 10px;
+}
+
+.dir-box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--ink);
+  flex-wrap: wrap;
+}
+
+/* Return compact chips */
+.ret-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+  gap: 6px;
+}
+
+.ret-chip {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ret-chip b {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.ret-chip span {
+  font-size: 11.5px;
+  color: var(--mute);
+}
+
+.ret-chip.on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
 }
 
 .dir-note {
@@ -160,6 +239,12 @@ body.track .subnav {
   background: var(--warn-bg);
   color: var(--warn);
   border-color: #f3d58a;
+}
+
+.dir-note.bad {
+  background: var(--bad-bg);
+  border-color: #f1b5b5;
+  color: var(--bad);
 }
 
 .dir-list {
@@ -351,10 +436,10 @@ body.track .subnav {
   margin-top: 10px;
 }
 
-/* Action Buttons Grid (3 buttons: balanced 3-col on desktop, 1+2 on mobile) */
+/* Action Buttons Grid (2 buttons: share link + driver chat) */
 .actions-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 12px;
 }
@@ -680,11 +765,7 @@ body.track .subnav {
 
 @media (max-width: 540px) {
   .actions-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .actions-grid > :first-child {
-    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .ready-box .row {
@@ -721,16 +802,4 @@ body.track .subnav {
     font-size: 12px;
     padding: 9px 5px;
   }
-}
-
-.dir-note.bad {
-  background: var(--bad-bg);
-  border-color: #f1b5b5;
-  color: var(--bad);
-}
-.dir-sub {
-  margin: 12px 0 6px;
-  font-size: 13.5px;
-  font-weight: 800;
-  color: var(--ink-soft);
 }

@@ -21,6 +21,7 @@
   const draft = {
     route: 'r1',
     dir: 'go',          // 'go' (ذهاب) or 'back' (عودة) in the map card
+    showPicker: false,  // collapsed by default when student already has an active 'go' booking
     pickMode: null,     // trip id while the student is choosing a point on the map
     locating: null,     // trip id while geolocation is being requested
     chat: {},
@@ -242,7 +243,7 @@
   }
 
   // ---------- Actions ----------
-  function bookAction(tid, forceReplace) {
+  function bookAction(tid) {
     const s = MB.state;
     const t = trip(tid);
     if (t && t.direction === 'back') return toast('رحلات العودة من غير حجز — الباص بيتحرك في ميعاده');
@@ -250,11 +251,9 @@
     const existingHere = bookingFor(s, tid);
     if (existingHere && !isBookingMissed(s, existingHere)) return toast('أنت مسجل في هذه الرحلة بالفعل');
     const curGo = activeGoBooking(s);
-    if (curGo && curGo.tripId !== tid && !forceReplace) {
-      return toast('أقصى حد لتسجيل رحلات الذهاب هو رحلة واحدة — ألغِ تسجيلك الأول لاختيار غيره');
-    }
+    const switched = !!(curGo && curGo.tripId !== tid);
     MB.update((st) => {
-      // Clear any previous confirmed 'go' bookings (either missed or being replaced)
+      // Clear any previous confirmed 'go' bookings (one-tap switch or missed replacement)
       st.myBookings.forEach((b) => {
         if (b.status !== 'confirmed') return;
         const bt = st.trips.find((x) => x.id === b.tripId);
@@ -270,7 +269,8 @@
     });
     draft.dir = 'go';
     draft.mapTrip = tid;
-    toast('تم تسجيلك في رحلة الذهاب بنجاح');
+    draft.showPicker = false;
+    toast(switched ? 'تم تبديل ميعاد رحلة الذهاب بنجاح' : 'تم تسجيلك في رحلة الذهاب بنجاح');
   }
 
   function cancelBooking(id) {
@@ -283,7 +283,8 @@
       if (tt) releaseSeat(tt);
       if (tt) st.notifications.unshift(note('تم إلغاء تسجيلك في ' + label(tt), 'booking', tt.id));
     });
-    toast('تم إلغاء تسجيلك الأول — يمكنك الآن التسجيل في أي رحلة ذهاب أخرى');
+    draft.showPicker = true;
+    toast('تم إلغاء تسجيلك — اختر أي رحلة ذهاب أخرى للتسجيل');
   }
 
   function markMissed(id) {
@@ -296,7 +297,8 @@
       if (tt) releaseSeat(tt);
       if (tt) st.notifications.unshift(note('فاتك موعد ' + label(tt) + ' — يمكنك التسجيل في رحلة ذهاب أخرى الآن', 'cancel', tt.id));
     });
-    toast('تم تسجيل أن الميعاد فاتك — يمكنك الآن التسجيل في أي رحلة ذهاب أخرى');
+    draft.showPicker = true;
+    toast('تم تسجيل أن الميعاد فاتك — اختر رحلة ذهاب بديلة الآن');
   }
 
   // Ready: send my pickup point (snapped onto the path by MB.requestPickup). Returns false if the bus already passed it.
@@ -453,64 +455,70 @@
       const list = s.trips
         .filter((x) => x.direction === 'back' && x.status !== 'cancelled' && x.status !== 'arrived')
         .sort((a, b) => a.scheduledAt - b.scheduledAt);
-      const rows = list.map((x) => {
+      const chips = list.map((x) => {
         const isCur = activeTrip && activeTrip.id === x.id;
-        return '<div class="dir-row' + (isCur ? ' on' : '') + '">' +
-          '<div class="dir-row-info" data-act="view-trip" data-trip="' + x.id + '">' +
-            '<b>' + esc(MB.R[x.routeId].name) + ' — التحرك الساعة ' + esc(x.time) + '</b>' +
-            '<div class="meta">' + statusBadge(x) + ' <span>من الجامعة إلى ' + esc(MB.R[x.routeId].fromName) + ' · حافلة ' + esc(MB.bus[x.busId].plate) + '</span></div>' +
-          '</div>' +
-          '<button class="btn ' + (isCur ? 'sm' : 'sec sm') + '" type="button" data-act="view-trip" data-trip="' + x.id + '">' +
-            (isCur ? 'معروضة على الخريطة' : 'عرض على الخريطة') +
-          '</button>' +
-        '</div>';
+        return '<button type="button" class="ret-chip' + (isCur ? ' on' : '') + '" data-act="view-trip" data-trip="' + x.id + '">' +
+          '<b>' + esc(MB.R[x.routeId].name) + ' · ' + esc(x.time) + '</b>' +
+          '<span>' + esc(MB.bus[x.busId].plate) + '</span>' +
+        '</button>';
       }).join('');
       return '<div class="dir-box">' +
-        '<div class="dir-note">' +
-          '<b>رحلات العودة من الجامعة (بدون حجز مسبق):</b> الحافلات تتحرك تلقائياً في المواعيد المحددة بالأسفل. اضغط على أي رحلة لمتابعتها على الخريطة.' +
-        '</div>' +
-        '<div class="dir-list">' + (rows || '<p class="mute" style="margin:0">لا توجد رحلات عودة حالياً</p>') + '</div>' +
+        '<div class="dir-note" style="margin-bottom:8px"><b>رحلات العودة من الجامعة (بدون حجز):</b> اختر الموعد لعرض الحافلة على الخريطة:</div>' +
+        '<div class="ret-chips">' + (chips || '<p class="mute" style="margin:0">لا توجد رحلات عودة حالياً</p>') + '</div>' +
       '</div>';
     }
 
-    // dir === 'go' (ذهاب): my trip status on top, then the trips I can still register in
+    // dir === 'go' (ذهاب):
+    // When already registered and picker is closed, show a single compact summary bar so the map stays right at the top
+    if (actGo && trip(actGo.tripId) && !draft.showPicker) {
+      const curT = trip(actGo.tripId);
+      return '<div class="my-trip-bar">' +
+        '<div class="my-trip-info">' +
+          '<span class="badge ok">✓ مسجّل</span>' +
+          '<b>' + esc(MB.R[curT.routeId].name) + ' — الساعة ' + esc(curT.time) + '</b>' +
+          '<span class="mute">مقعد رقم ' + actGo.seat + '</span>' +
+        '</div>' +
+        '<div class="my-trip-acts">' +
+          '<button class="btn sec sm" type="button" data-act="toggle-picker">تغيير الميعاد</button>' +
+          '<button class="btn warn sm" type="button" data-act="mark-missed" data-id="' + actGo.id + '">فاتني الميعاد</button>' +
+          '<button class="btn sec sm" type="button" data-act="cancel-booking" data-id="' + actGo.id + '">إلغاء</button>' +
+        '</div>' +
+      '</div>';
+    }
+
     const goTrips = s.trips
       .filter((x) => x.direction === 'go' && x.status !== 'cancelled')
       .sort((a, b) => a.scheduledAt - b.scheduledAt);
 
-    let statusHtml;
+    let headerHtml;
     if (actGo && trip(actGo.tripId)) {
-      const curT = trip(actGo.tripId);
-      statusHtml = '<div class="dir-note ok">' +
-        '<div><b>✓ أنت مسجّل</b> — ' + esc(MB.R[curT.routeId].name) + ' · الساعة ' + esc(curT.time) + ' · مقعد ' + actGo.seat + '</div>' +
-        '<div class="row" style="margin-top:8px">' +
-          '<button class="btn sec sm" type="button" data-act="cancel-booking" data-id="' + actGo.id + '">إلغاء التسجيل</button>' +
-          '<button class="btn warn sm" type="button" data-act="mark-missed" data-id="' + actGo.id + '">فاتني الميعاد</button>' +
-        '</div>' +
+      headerHtml = '<div class="dir-box-head">' +
+        '<b>اختر رحلة ذهاب للتبديل إليها فوراً (بضغطة واحدة):</b>' +
+        '<button class="btn sec sm" type="button" data-act="toggle-picker">إخفاء القائمة</button>' +
       '</div>';
     } else if (missedEntry) {
       const mt = trip(missedEntry.tripId);
-      statusHtml = '<div class="dir-note bad"><b>فاتتك الرحلة</b>' + (mt ? ' — ' + esc(MB.R[mt.routeId].name) + ' · الساعة ' + esc(mt.time) : '') + '</div>';
+      headerHtml = '<div class="dir-note bad"><b>فاتتك الرحلة' + (mt ? ' (' + esc(MB.R[mt.routeId].name) + ' · ' + esc(mt.time) + ')' : '') + '</b> — اختر رحلة ذهاب بديلة بالأسفل:</div>';
     } else {
-      statusHtml = '<div class="dir-note"><b>مش مسجّل في أي رحلة ذهاب</b></div>';
+      headerHtml = '<div class="dir-note"><b>اختر رحلة الذهاب للتسجيل (الحد الأقصى رحلة واحدة):</b></div>';
     }
 
     const open = goTrips.filter((x) => (x.status === 'scheduled' || x.status === 'at_start') && !(actGo && actGo.tripId === x.id));
     const rows = open.map((x) => {
-      const act = '<button class="btn ' + (actGo ? 'sec ' : '') + 'sm" type="button" data-act="book" data-trip="' + x.id + '">سجّل</button>';
+      const btnLabel = actGo ? 'بدّل لهنا' : 'سجّل الآن';
+      const act = '<button class="btn sm" type="button" data-act="book" data-trip="' + x.id + '">' + btnLabel + '</button>';
       const isCur = activeTrip && activeTrip.id === x.id;
       return '<div class="dir-row' + (isCur ? ' on' : '') + '">' +
         '<div class="dir-row-info" data-act="view-trip" data-trip="' + x.id + '">' +
-          '<b>' + esc(MB.R[x.routeId].name) + ' — ' + esc(x.time) + '</b>' +
-          '<div class="meta">' + x.booked + ' مسجّل</div>' +
+          '<b>' + esc(MB.R[x.routeId].name) + ' — الساعة ' + esc(x.time) + '</b>' +
+          '<div class="meta">' + x.booked + ' مسجّل · من ' + esc(MB.R[x.routeId].fromName) + '</div>' +
         '</div>' +
         '<div class="dir-row-acts">' + act + '</div>' +
       '</div>';
     }).join('');
 
     return '<div class="dir-box">' +
-      statusHtml +
-      '<h4 class="dir-sub">رحلات متاحة للتسجيل</h4>' +
+      headerHtml +
       '<div class="dir-list">' + (rows || '<p class="mute" style="margin:0">لا توجد رحلات متاحة للتسجيل الآن</p>') + '</div>' +
     '</div>';
   }
@@ -533,7 +541,7 @@
         : 'فاتك الموعد؟ بديل فوري متاح';
 
     return '<div class="home-grid">' +
-      /* Primary Column: Live Map at the Top & ETAs */
+      /* Primary Column: Live Map at the Top */
       '<div class="home-col">' +
         '<section class="card map-card m-order-1">' +
           '<div class="map-head">' +
@@ -546,14 +554,9 @@
           dirTripsBoxHtml(s, t) +
           '<div id="mapBox" class="map-box"></div>' +
         '</section>' +
-
-        '<section class="card m-order-4">' +
-          '<h3>وقت الوصول المتوقع</h3>' +
-          etaRowsHtml(t) +
-        '</section>' +
       '</div>' +
 
-      /* Secondary Column: Active Trip Details & Actions */
+      /* Secondary Column: Unified Active Trip Details & Actions */
       '<div class="home-col">' +
         '<section class="card m-order-2">' +
           '<div class="tc-top">' +
@@ -597,8 +600,8 @@
             : '') +
         '</section>' +
 
-        /* 1.4 Missed Trip / Instant Alternative Card */
-        (altTrip
+        /* Missed Trip / Instant Alternative Card (shown only when current trip is missed/skipped) */
+        ((pk && (pk.status === 'passed' || pk.status === 'skipped') && altTrip)
           ? '<section class="card m-order-3">' +
               '<div class="row">' +
                 '<div class="grow">' +
@@ -855,7 +858,8 @@
     const d = el.dataset;
     switch (d.act) {
       case 'route': draft.route = d.route; render(); break;
-      case 'map-dir': draft.dir = d.dir === 'back' ? 'back' : 'go'; draft.mapTrip = null; render(); break;
+      case 'map-dir': draft.dir = d.dir === 'back' ? 'back' : 'go'; draft.mapTrip = null; draft.showPicker = false; render(); break;
+      case 'toggle-picker': draft.showPicker = !draft.showPicker; render(); break;
       case 'view-trip': draft.mapTrip = d.trip; render(); break;
       case 'ready': readyTap(d.trip); break;
       case 'ready-demo': readyDemo(d.trip); break;
@@ -865,8 +869,8 @@
       case 'copy': copyText(d.link); break;
       case 'chip': sendChat(d.trip, d.text); break;
       case 'chat-send': sendChat(d.trip); break;
-      case 'book': bookAction(d.trip, false); break;
-      case 'book-alt': bookAction(d.trip, true); break;
+      case 'book': bookAction(d.trip); break;
+      case 'book-alt': bookAction(d.trip); break;
       case 'cancel-booking': cancelBooking(d.id); break;
       case 'mark-missed': markMissed(d.id); break;
       case 'report-send': sendReport(); break;

@@ -44,30 +44,12 @@
     <button class="alert-test" id="alertTest" type="button">اختبار التنبيه</button>
     <span class="audio-hint" id="audioHint">اضغط في أي مكان لتفعيل الصوت</span>
   </div>
+
   <div class="drv-grid">
-    <!-- Primary Column: Live Route Map + Ready requests -->
+    <!-- Primary Column: Unified Driving Mode Card (Trip Header + Live Map + Next Request + Primary Action) -->
     <div class="drv-col">
       <section class="card m-order-1" style="padding:12px">
-        <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <h3 style="margin:0">خريطة المسار والطلبات</h3>
-          <span class="mute" style="font-size:12.5px">الطلاب بيظهروا بشكل مجهول حفاظاً على الخصوصية</span>
-        </div>
-        <div class="map drv-map" id="map"></div>
-      </section>
-
-      <section class="card m-order-3">
-        <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <h3 style="margin:0">طلبات الركوب</h3>
-          <span class="badge info" id="reqCount">0</span>
-        </div>
-        <div id="reqList" class="req-list"></div>
-      </section>
-    </div>
-
-    <!-- Secondary Column: Primary Controls + Next Up request + inline chat -->
-    <div class="drv-col">
-      <section class="card m-order-2">
-        <div class="row drv-trip-head">
+        <div class="row drv-trip-head" style="margin-bottom:10px">
           <div class="grow">
             <h2 id="tripTitle" style="margin:0 0 2px;font-size:18px">جاري التحميل…</h2>
             <p class="mute" id="tripMeta" style="margin:0"></p>
@@ -75,12 +57,11 @@
           <select id="tripSel" class="trip-sel" aria-label="اختيار رحلة السائق"></select>
         </div>
 
+        <div class="map drv-map" id="map"></div>
+
         <ol class="chain" id="chain"></ol>
 
-        <button class="btn big go-btn" id="btnMain" type="button">ابدأ الرحلة</button>
-        <p class="mute hint" id="hint"></p>
-
-        <div class="next-card" id="nextCard">
+        <div class="next-card" id="nextCard" style="margin-bottom:10px">
           <div class="grow">
             <span class="mute" id="nextLabel">أقرب طلب ركوب</span>
             <strong class="next-name" id="nextName">—</strong>
@@ -91,17 +72,31 @@
             <span class="mute" id="etaUnit"></span>
           </div>
         </div>
+
+        <button class="btn big go-btn" id="btnMain" type="button">ابدأ الرحلة</button>
+        <p class="mute hint" id="hint" style="margin:6px 0 0"></p>
+      </section>
+    </div>
+
+    <!-- Secondary Column: Ready Requests List + Quick-Reply Chat -->
+    <div class="drv-col">
+      <section class="card m-order-2">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h3 style="margin:0">طلبات الركوب على المسار</h3>
+          <span class="badge info" id="reqCount">0</span>
+        </div>
+        <div id="reqList" class="req-list"></div>
       </section>
 
-      <section class="card m-order-4">
+      <section class="card m-order-3">
         <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <h3 style="margin:0">شات الرحلة (بدون مكالمات هاتفية)</h3>
+          <h3 style="margin:0">رد سريع وشات الرحلة</h3>
           <span class="badge info" id="chatSub"></span>
         </div>
-        <div class="msg-list" id="chatList"></div>
         <div class="quick-row" id="quick"></div>
+        <div class="msg-list" id="chatList"></div>
         <div class="chat-input">
-          <input id="chatIn" type="text" maxlength="200" placeholder="اكتب رسالة للطلاب..." autocomplete="off">
+          <input id="chatIn" type="text" maxlength="200" placeholder="أو اكتب رسالة مخصصة للطلاب..." autocomplete="off">
           <button class="btn" id="chatSend" type="button">إرسال</button>
         </div>
       </section>

@@ -318,7 +318,7 @@ body {
 
 /* Inline Chat */
 .msg-list {
-  height: 210px;
+  height: 195px;
   overflow-y: auto;
   padding: 10px;
   background: var(--bg);
@@ -360,27 +360,30 @@ body {
 }
 
 .quick-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
-  flex-wrap: wrap;
   margin-bottom: 10px;
 }
 
 .qchip {
   appearance: none;
   border: 1px solid var(--line-strong);
-  background: var(--bg);
-  color: var(--ink);
-  border-radius: 6px;
-  padding: 6px 10px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-radius: 8px;
+  padding: 9px 10px;
   font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 800;
   cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .qchip:hover {
-  background: var(--bg-subtle);
+  background: #dceee6;
+  border-color: var(--brand);
 }
 
 .chat-input {
@@ -555,6 +558,10 @@ body {
   }
 
   .req-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-row {
     grid-template-columns: 1fr;
   }
 }
