@@ -763,7 +763,7 @@
     if (pk) {
       const live = pk.status === 'waiting' || pk.status === 'accepted' || pk.status === 'boarding';
       L.marker([pk.lat, pk.lng], {
-        icon: L.divIcon({ className: '', html: '<div class="pk-pin' + (live ? ' live' : '') + '"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+        icon: L.divIcon({ className: '', html: '<div class="pk-pin' + (live ? ' live' : '') + '"></div>', iconSize: [28, 28], iconAnchor: [14, 14] }),
         zIndexOffset: 800,
       }).bindTooltip(esc(PK_LABEL[pk.status] || '')).addTo(map);
     }
@@ -775,10 +775,10 @@
       if (draft.flyPk) {
         // animated zoom from the whole route down to my spot, and bring the map into view on phones
         draft.flyPk = false;
-        setTimeout(() => map.flyTo([pk.lat, pk.lng], 16, { duration: 1.2 }), 250);
+        setTimeout(() => map.flyTo([pk.lat, pk.lng], 17, { duration: 1.2 }), 250);
         try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
       } else {
-        map.setView([pk.lat, pk.lng], 16, { animate: false });
+        map.setView([pk.lat, pk.lng], 17, { animate: false });
       }
     }
     // little switch on the map: "my spot" <-> "whole route"

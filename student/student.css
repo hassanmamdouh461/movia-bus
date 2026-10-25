@@ -651,8 +651,8 @@ body.track .subnav {
 /* Pickup point (Ready) on the map */
 .pk-pin {
   position: relative;
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--brand);
   border: 3px solid #fff;
@@ -662,9 +662,9 @@ body.track .subnav {
 .pk-pin.live::after {
   content: '';
   position: absolute;
-  inset: -9px;
+  inset: -14px;
   border-radius: 50%;
-  border: 2px solid var(--brand);
+  border: 3px solid var(--brand);
   animation: pkPulse 1.6s ease-out infinite;
 }
 

@@ -93,6 +93,8 @@
   let map = null, routeLayer = null, pinLayer = null, busLayer = null;
   let lastTripId = null, lastPinSig = '', lastReqSig = '', lastChatSig = '';
   let knownPickups = null;
+  // map focus: 'auto' keeps the bus and the nearest student request in frame, 'manual' leaves the map to the driver
+  let focusMode = 'auto', lastFitAt = 0, lastFitKey = '', focusBtn = null;
 
   function initMap() {
     if (typeof L === 'undefined') return;
@@ -104,8 +106,59 @@
     routeLayer = L.layerGroup().addTo(map);
     pinLayer = L.layerGroup().addTo(map);
     busLayer = L.layerGroup().addTo(map);
+    const takeOver = () => { if (focusMode === 'auto') { focusMode = 'manual'; updateFocusBtn(); } };
+    map.on('dragstart', takeOver);
+    map.getContainer().addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.leaflet-control-zoom')) takeOver(); });
+    const FocusCtl = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd() {
+        const b = L.DomUtil.create('button', 'btn sm map-focus-btn');
+        b.type = 'button';
+        L.DomEvent.disableClickPropagation(b);
+        L.DomEvent.on(b, 'click', () => {
+          focusMode = focusMode === 'auto' ? 'manual' : 'auto';
+          lastFitKey = ''; lastFitAt = 0;
+          if (focusMode === 'manual' && lastTrip) map.fitBounds(L.latLngBounds(MB.polyOf(lastTrip)), { padding: [28, 28] });
+          updateFocusBtn();
+          if (lastTrip) autoFocus(lastTrip);
+        });
+        focusBtn = b;
+        return b;
+      },
+    });
+    new FocusCtl().addTo(map);
+    updateFocusBtn();
     setTimeout(() => map.invalidateSize(), 50);
     window.addEventListener('resize', () => map && map.invalidateSize());
+  }
+
+  let lastTrip = null;
+  function updateFocusBtn() {
+    if (focusBtn) focusBtn.textContent = focusMode === 'auto' ? 'عرض المسار كله' : 'تتبّع تلقائي';
+  }
+
+  /* Auto focus: while the trip is running, keep the bus and the nearest student request in frame
+     (zoomed in close); with no requests ahead just follow the bus; while boarding stay on the bus. */
+  function autoFocus(trip) {
+    if (!map || focusMode !== 'auto' || trip.status !== 'en_route') return;
+    const pos = MB.position(trip);
+    if (!pos) return;
+    const reqs = aheadRequests(trip);
+    const target = reqs[0];
+    const now = Date.now();
+    const bus = [pos.lat, pos.lng];
+    if (target && target.k.status !== 'boarding') {
+      const key = 'req|' + target.k.id;
+      // refit when the nearest request changes, otherwise every 2s as the bus closes in
+      if (key === lastFitKey && now - lastFitAt < 2000) return;
+      lastFitKey = key; lastFitAt = now;
+      map.fitBounds(L.latLngBounds([bus, [target.k.lat, target.k.lng]]), { padding: [60, 60], maxZoom: 17, animate: true, duration: 0.8 });
+    } else {
+      const key = target ? 'brd' : 'follow';
+      if (key === lastFitKey && now - lastFitAt < 1500) return;
+      lastFitKey = key; lastFitAt = now;
+      map.setView(bus, target ? 17 : 15, { animate: true, duration: 0.8 });
+    }
   }
 
   function drawRoute(trip) {
@@ -125,6 +178,7 @@
     term(poly[0], trip.direction === 'go' ? route.fromName : route.toName, 'start');
     term(poly[poly.length - 1], trip.direction === 'go' ? route.toName : route.fromName, 'end');
     map.fitBounds(L.latLngBounds(poly), { padding: [28, 28] });
+    lastFitKey = ''; lastFitAt = 0;
   }
 
   function renderPins(trip) {
@@ -479,6 +533,8 @@
     }
     renderPill(trip);
     renderBus(trip);
+    lastTrip = trip;
+    autoFocus(trip);
     renderNext(trip);
     renderPins(trip);
     renderReqs(trip);
