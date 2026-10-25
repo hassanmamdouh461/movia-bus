@@ -281,11 +281,11 @@ body {
 
 /* Map Pins: students (anonymous), route terminals */
 .pin.req {
-  width: 100%;
+  width: max-content;
   min-width: 0;
-  height: 26px;
-  border-radius: 13px;
-  padding: 0 4px;
+  height: 22px;
+  border-radius: 11px;
+  padding: 0 9px;
   font-size: 11.5px;
   white-space: nowrap;
   background: var(--info);
@@ -300,11 +300,12 @@ body {
 }
 
 .pin.term {
-  width: 100%;
+  width: max-content;
+  max-width: 150px;
   min-width: 0;
-  height: 24px;
-  border-radius: 12px;
-  padding: 0 8px;
+  height: 22px;
+  border-radius: 11px;
+  padding: 0 9px;
   font-size: 11.5px;
   white-space: nowrap;
   overflow: hidden;
@@ -569,4 +570,20 @@ body {
 .map-focus-btn {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   border: 1px solid var(--line-strong);
+}
+
+/* map labels are sized by their text: the Leaflet icon box is 0x0 and the pill is centred on the point */
+.mb-icon .pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  width: max-content;
+  white-space: nowrap;
+}
+.mb-icon .pin.bus {
+  height: 24px;
+  min-width: 0;
+  padding: 0 9px;
+  font-size: 11.5px;
 }

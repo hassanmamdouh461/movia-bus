@@ -171,8 +171,8 @@
       icon: L.divIcon({
         className: 'mb-icon',
         html: '<div class="pin term ' + cls + '">' + esc(name) + '</div>',
-        iconSize: [170, 24],
-        iconAnchor: [85, 12],
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
       }),
     }).addTo(routeLayer);
     term(poly[0], trip.direction === 'go' ? route.fromName : route.toName, 'start');
@@ -195,8 +195,8 @@
         icon: L.divIcon({
           className: 'mb-icon',
           html: '<div class="pin req ' + cls + '">طالب</div>',
-          iconSize: [44, 26],
-          iconAnchor: [22, 13],
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
         }),
       }).bindTooltip(tip).addTo(pinLayer);
     });
@@ -211,8 +211,8 @@
         icon: L.divIcon({
           className: 'mb-icon',
           html: '<div class="pin bus">الحافلة</div>',
-          iconSize: [68, 28],
-          iconAnchor: [34, 14],
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
         }),
       }).addTo(busLayer);
     } else {
