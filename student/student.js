@@ -23,6 +23,8 @@
     dir: 'go',          // 'go' (ذهاب) or 'back' (عودة) in the map card
     showPicker: false,  // collapsed by default when student already has an active 'go' booking
     pickMode: null,     // trip id while the student is choosing a point on the map
+    focusPk: false,     // keep the map zoomed on my pickup point while that request is active
+    flyPk: false,       // one-shot: animate the zoom the moment I press Ready
     locating: null,     // trip id while geolocation is being requested
     chat: {},
     report: { cat: REPORT_CATS[0], trip: '', text: '' },
@@ -312,6 +314,8 @@
       return false;
     }
     MB.requestPickup(tid, lat, lng);
+    draft.focusPk = true;
+    draft.flyPk = true;
     draft.pickMode = null;
     draft.locating = null;
     toast('تم إرسال مكانك للسائق');
@@ -764,7 +768,38 @@
       }).bindTooltip(esc(PK_LABEL[pk.status] || '')).addTo(map);
     }
     map.on('click', (e) => { if (draft.pickMode === tid) pickOnMap(tid, e.latlng.lat, e.latlng.lng); });
+    const focusing = draft.focusPk && pk && (pk.status === 'waiting' || pk.status === 'accepted' || pk.status === 'boarding');
+    if (!focusing) draft.focusPk = false;
     map.fitBounds(line.getBounds(), { padding: [28, 28] });
+    if (focusing) {
+      if (draft.flyPk) {
+        // animated zoom from the whole route down to my spot, and bring the map into view on phones
+        draft.flyPk = false;
+        setTimeout(() => map.flyTo([pk.lat, pk.lng], 16, { duration: 1.2 }), 250);
+        try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+      } else {
+        map.setView([pk.lat, pk.lng], 16, { animate: false });
+      }
+    }
+    // little switch on the map: "my spot" <-> "whole route"
+    if (pk && (pk.status === 'waiting' || pk.status === 'accepted' || pk.status === 'boarding')) {
+      const Ctl = L.Control.extend({
+        options: { position: 'topleft' },
+        onAdd() {
+          const b = L.DomUtil.create('button', 'btn sm map-focus-btn');
+          b.type = 'button';
+          b.textContent = focusing ? 'عرض المسار كله' : 'ركّز على مكاني';
+          L.DomEvent.disableClickPropagation(b);
+          L.DomEvent.on(b, 'click', () => {
+            draft.focusPk = !focusing;
+            draft.flyPk = !focusing;
+            render();
+          });
+          return b;
+        },
+      });
+      new Ctl().addTo(map);
+    }
     mapCtl = { tripId: tid, map, bus: null, line };
     tickMap();
     setTimeout(() => map.invalidateSize(), 50);
