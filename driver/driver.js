@@ -232,6 +232,7 @@
 
   function renderHeader(trip) {
     const s = trip.status;
+    document.body.classList.toggle('pre-trip', s !== 'en_route');
     const paused = isPaused(trip);
     $('tripTitle').textContent = MB.tripLabel(trip);
     const plate = (MB.bus[trip.busId] || {}).plate || '';
@@ -315,7 +316,7 @@
     $('reqCount').textContent = reqs.length;
 
     if (!pos) {
-      box.innerHTML = '<p class="mute req-empty">طلبات الركوب بتظهر هنا لما الرحلة تبدأ.</p>';
+      box.innerHTML = '<p class="mute req-empty">تتفتح طلبات الركوب تلقائياً بمجرد ضغط «ابدأ الرحلة».</p>';
       return;
     }
     if (!reqs.length) {
@@ -584,13 +585,13 @@
           if (x) { x.status = 'en_route'; x.startedAt = Date.now() - 45000; }
         });
         MB.notify('انطلقت الحافلة في ' + MB.tripLabel(t), 'bus');
-        toast('بدأت الرحلة وتم تفعيل البث التلقائي للموقع');
+        toast('بدأت الرحلة وتم تفعيل البث التلقائي للموقع ✓');
       } else if (t.status === 'en_route') {
         MB.update((s) => {
           const x = s.trips.find((z) => z.id === t.id);
           if (x) x.status = 'arrived';
         });
-        toast('تم إنهاء الرحلة وتوقف بث الموقع تلقائياً');
+        toast('تم إنهاء الرحلة وتوقف بث الموقع تلقائياً ✓');
       }
     };
 

@@ -331,6 +331,16 @@ body {
   margin-bottom: 10px;
 }
 
+/* Compact secondary cards before the trip starts so focus stays on Map + Start Trip */
+body.pre-trip .msg-list {
+  height: 90px;
+}
+
+body.pre-trip .quick-row,
+body.pre-trip .chat-input {
+  opacity: 0.6;
+}
+
 .bubble {
   max-width: 84%;
   padding: 8px 12px;

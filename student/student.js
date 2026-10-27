@@ -6,7 +6,7 @@
   const app = document.getElementById('app');
   const TOTAL_MIN = Math.round((MB.TRIP_MS / 60000) * 3);
   const REPORT_CATS = ['تأخير الحافلة', 'نظافة الحافلة', 'سلوك السائق', 'تجاوز مكان الركوب', 'أخرى'];
-  const KIND_LABEL = { bus: 'اقتراب الحافلة', driver: 'تحديث السائق', cancel: 'إلغاء وبديل', booking: 'تأكيد حجز', info: 'إشعار' };
+  const KIND_LABEL = { bus: 'اقتراب الحافلة', driver: 'تحديث السائق', cancel: 'إلغاء وبديل', booking: 'تأكيد تسجيل', info: 'إشعار' };
   const KIND_CLS = { bus: 'info', driver: 'ok', cancel: 'bad', booking: 'ok', info: '' };
   const BOOK_STATUS = { confirmed: 'مؤكد', cancelled: 'ملغي', missed: 'فاتتك الرحلة', trip_cancelled: 'ألغيت الرحلة' };
   const VIEWS = ['home', 'chat', 'alerts'];
@@ -196,9 +196,9 @@
   }
   function copyText(txt) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(txt).then(() => toast('تم نسخ رابط التتبع المباشر للأهل'));
+      navigator.clipboard.writeText(txt).then(() => toast('تم نسخ رابط التتبع للأهل ✓'));
     } else {
-      toast('تم تجهيز رابط التتبع المباشر');
+      toast('تم تجهيز رابط التتبع للأهل ✓');
     }
   }
 
@@ -228,7 +228,7 @@
     t.booked += 1;
     const b = { id: uid('k'), tripId: t.id, seat: t.booked, status: 'confirmed' };
     s.myBookings.push(b);
-    s.notifications.unshift(note(msg || ('تم تأكيد حجزك في ' + label(t) + ' · مقعد رقم ' + b.seat), 'booking', t.id));
+    s.notifications.unshift(note(msg || ('تم تأكيد تسجيلك في ' + label(t)), 'booking', t.id));
     return b;
   }
 
@@ -248,10 +248,10 @@
   function bookAction(tid) {
     const s = MB.state;
     const t = trip(tid);
-    if (t && t.direction === 'back') return toast('رحلات العودة من غير حجز — الباص بيتحرك في ميعاده');
+    if (t && t.direction === 'back') return toast('رحلات العودة بدون تسجيل — الباص يتحرك في ميعاده');
     if (!t || (t.status !== 'scheduled' && t.status !== 'at_start')) return toast('التسجيل غير متاح لهذه الرحلة حالياً');
     const existingHere = bookingFor(s, tid);
-    if (existingHere && !isBookingMissed(s, existingHere)) return toast('أنت مسجل في هذه الرحلة بالفعل');
+    if (existingHere && !isBookingMissed(s, existingHere)) return toast('أنت مسجّل في هذه الرحلة بالفعل');
     const curGo = activeGoBooking(s);
     const switched = !!(curGo && curGo.tripId !== tid);
     MB.update((st) => {
@@ -272,7 +272,7 @@
     draft.dir = 'go';
     draft.mapTrip = tid;
     draft.showPicker = false;
-    toast(switched ? 'تم تبديل ميعاد رحلة الذهاب بنجاح' : 'تم تسجيلك في رحلة الذهاب بنجاح');
+    toast(switched ? 'تم تبديل الميعاد ✓' : 'تم التسجيل ✓');
   }
 
   function cancelBooking(id) {
@@ -286,7 +286,7 @@
       if (tt) st.notifications.unshift(note('تم إلغاء تسجيلك في ' + label(tt), 'booking', tt.id));
     });
     draft.showPicker = true;
-    toast('تم إلغاء تسجيلك — اختر أي رحلة ذهاب أخرى للتسجيل');
+    toast('تم إلغاء التسجيل — اختر موعداً آخر');
   }
 
   function markMissed(id) {
@@ -300,7 +300,7 @@
       if (tt) st.notifications.unshift(note('فاتك موعد ' + label(tt) + ' — يمكنك التسجيل في رحلة ذهاب أخرى الآن', 'cancel', tt.id));
     });
     draft.showPicker = true;
-    toast('تم تسجيل أن الميعاد فاتك — اختر رحلة ذهاب بديلة الآن');
+    toast('اختر رحلة ذهاب بديلة من القائمة');
   }
 
   // Ready: send my pickup point (snapped onto the path by MB.requestPickup). Returns false if the bus already passed it.
@@ -318,7 +318,7 @@
     draft.flyPk = true;
     draft.pickMode = null;
     draft.locating = null;
-    toast('تم إرسال مكانك للسائق');
+    toast('تم إرسال مكانك للسائق ✓');
     return true;
   }
 
@@ -326,7 +326,7 @@
     const s = MB.state;
     const t = trip(tid);
     if (!t || !bookingFor(s, tid) || (t.status !== 'at_start' && t.status !== 'en_route')) {
-      return toast('زر الجاهزية متاح لما تكون رحلتك المحجوزة جاهزة أو في الطريق');
+      return toast('زر الجاهزية يتفعل عند انطلاق رحلتك المسجّلة');
     }
     if (!navigator.geolocation) {
       draft.pickMode = tid;
@@ -343,7 +343,7 @@
       () => {
         draft.locating = null;
         draft.pickMode = tid;
-        toast('تعذر تحديد موقعك — اضغط على الخريطة');
+        toast('اضغط على الخريطة لتحديد مكانك');
         render();
       },
       { timeout: 4000, maximumAge: 30000, enableHighAccuracy: false }
@@ -368,7 +368,7 @@
 
   function cancelPickup(id) {
     MB.cancelPickup(id);
-    toast('تم إلغاء تسجيل الجاهزية');
+    toast('تم إلغاء طلب الركوب');
   }
 
   function shareTrip(tid) {
@@ -397,7 +397,7 @@
       text: txt.slice(0, 500), status: 'open', assignee: '', tripId: d.trip || null,
     }));
     d.text = '';
-    toast('تم إرسال البلاغ للإدارة بنجاح');
+    toast('تم إرسال البلاغ للإدارة ✓');
   }
 
   // Notify once when the bus is 2 minutes or less from my pickup
@@ -423,8 +423,12 @@
 
   // ---------- Views ----------
   function readyBoxHtml(s, t) {
+    if (t.direction === 'back') return '';
     const pk = myPk(s, t.id);
     const eligible = !!bookingFor(s, t.id) && (t.status === 'at_start' || t.status === 'en_route');
+    if (!pk && !eligible && draft.locating !== t.id && draft.pickMode !== t.id) {
+      return '<div class="ready-hint">💡 زر <b>«أنا جاهز Ready»</b> يتفعل تلقائياً عند انطلاق رحلتك المسجّلة لإشعار السائق بمكانك.</div>';
+    }
     let body;
     if (pk && (pk.status === 'waiting' || pk.status === 'accepted')) {
       body = '<div class="row"><span class="grow">' + pkChip(pk) + '</span>' +
@@ -439,10 +443,8 @@
         '<button class="btn sec sm" type="button" data-act="pick-cancel" data-trip="' + t.id + '">إلغاء</button></div>';
     } else {
       body = (pk ? '<div class="row" style="margin-bottom:8px"><span class="grow">' + pkChip(pk) + '</span></div>' : '') +
-        (eligible
-          ? '<div class="row"><span class="grow mute" style="font-size:13px">اضغط عشان السواق يعرف مكانك ويقف لك.</span>' +
-            '<button class="btn" type="button" data-act="ready" data-trip="' + t.id + '">أنا جاهز (Ready)</button></div>'
-          : '<p class="mute" style="margin:0">زر Ready بيظهر لما رحلتك المحجوزة تكون جاهزة للانطلاق أو في الطريق.</p>');
+        '<div class="row"><span class="grow mute" style="font-size:13px">اضغط عشان السواق يعرف مكانك ويقف لك.</span>' +
+        '<button class="btn" type="button" data-act="ready" data-trip="' + t.id + '">أنا جاهز (Ready)</button></div>';
     }
     return '<div class="ready-box"><h4>زر الجاهزية (Ready) — إشعار السائق بمكانك</h4>' + body + '</div>';
   }
@@ -467,7 +469,7 @@
         '</button>';
       }).join('');
       return '<div class="dir-box">' +
-        '<div class="dir-note" style="margin-bottom:8px"><b>رحلات العودة من الجامعة (بدون حجز):</b> اختر الموعد لعرض الحافلة على الخريطة:</div>' +
+        '<div class="dir-note" style="margin-bottom:8px"><b>رحلات العودة من الجامعة (بدون تسجيل):</b> اختر الموعد لعرض الحافلة على الخريطة:</div>' +
         '<div class="ret-chips">' + (chips || '<p class="mute" style="margin:0">لا توجد رحلات عودة حالياً</p>') + '</div>' +
       '</div>';
     }
@@ -479,8 +481,7 @@
       return '<div class="my-trip-bar">' +
         '<div class="my-trip-info">' +
           '<span class="badge ok">✓ مسجّل</span>' +
-          '<b>' + esc(MB.R[curT.routeId].name) + ' — الساعة ' + esc(curT.time) + '</b>' +
-          '<span class="mute">مقعد رقم ' + actGo.seat + '</span>' +
+          '<b>' + esc(MB.R[curT.routeId].name) + ' · الساعة ' + esc(curT.time) + '</b>' +
         '</div>' +
         '<div class="my-trip-acts">' +
           '<button class="btn sec sm" type="button" data-act="toggle-picker">تغيير الميعاد</button>' +
@@ -566,22 +567,24 @@
           '<div class="tc-top">' +
             '<span class="avatar">' + esc(drvInitial(t)) + '</span>' +
             '<div class="grow">' +
-              '<div class="mute">' + esc(label(t)) + '</div>' +
-              '<div class="mute" style="font-size:12.5px">' + esc(routeLine(t)) + '</div>' +
-              '<b class="tc-driver">' + esc(drv.name) + '</b>' +
-              '<div class="meta"><span class="plate">حافلة: ' + esc(bus.plate) + '</span></div>' +
+              '<b class="tc-driver">' + esc( label(t) ) + '</b>' +
+              '<div class="meta">' +
+                '<span>' + esc(drv.name) + '</span> · ' +
+                '<span class="plate">حافلة: ' + esc(bus.plate) + '</span> · ' +
+                '<span>' + esc(routeLine(t)) + '</span>' +
+              '</div>' +
             '</div>' +
             statusBadge(t) +
           '</div>' +
 
-          '<div class="eta-panel">' +
-            '<div class="eta-cell">' +
-              '<span class="mute">' + (pkLive ? 'الوصول لمكانك للركوب' : 'الوقت المتبقي للرحلة') + '</span>' +
+          '<div class="eta-hero">' +
+            '<div class="eta-hero-main">' +
+              '<span class="mute">' + (pkLive ? 'الوصول لمكانك للركوب' : 'الوقت المتبقي / موعد الرحلة') + '</span>' +
               '<div class="eta-big" data-live="etabig" data-trip="' + t.id + '">' + etaBigHtml(t) + '</div>' +
             '</div>' +
-            '<div class="eta-cell">' +
-              '<span class="mute">الوصول لنهاية الخط (' + esc(ends.to) + ')</span>' +
-              '<div class="eta-big" style="color:var(--ink)" data-live="endeta" data-trip="' + t.id + '">' + esc(endText(t)) + '</div>' +
+            '<div class="eta-hero-sub">' +
+              '<span>نهاية الخط (' + esc(ends.to) + '):</span> ' +
+              '<b data-live="endeta" data-trip="' + t.id + '">' + esc(endText(t)) + '</b>' +
             '</div>' +
           '</div>' +
 
@@ -591,15 +594,14 @@
 
           /* Quick Actions Grid */
           '<div class="actions-grid">' +
-            '<button class="act-btn" type="button" data-act="share" data-trip="' + t.id + '">مشاركة التتبع مع الأهل</button>' +
-            '<a class="act-btn" href="#chat">مراسلة السائق بالشات</a>' +
+            '<button class="act-btn" type="button" data-act="share" data-trip="' + t.id + '">نسخ رابط التتبع للأهل</button>' +
+            '<a class="act-btn" href="#chat">محادثة السائق</a>' +
           '</div>' +
 
           (lastLink
-            ? '<div class="link-row">' +
-                '<input readonly value="' + esc(lastLink.url) + '" aria-label="رابط مشاركة الرحلة">' +
-                '<button class="btn sec sm" type="button" data-act="copy" data-link="' + esc(lastLink.url) + '">نسخ الرابط</button>' +
-                '<a class="btn sm" href="#track=' + encodeURIComponent(t.id) + '">معاينة صفحة الأهل</a>' +
+            ? '<div class="share-preview-row">' +
+                '<span class="mute">✓ تم تجهيز رابط متابعة الأهل</span>' +
+                '<a class="btn sec sm" href="#track=' + encodeURIComponent(t.id) + '">معاينة شاشة الأهل ↗</a>' +
               '</div>'
             : '') +
         '</section>' +
@@ -612,7 +614,7 @@
                   '<h3 style="margin:0 0 2px">' + esc(altTitle) + '</h3>' +
                   '<div class="mute">أقرب رحلة قادمة: <b>' + esc(label(altTrip)) + '</b> · ' + altTrip.booked + ' مسجّل</div>' +
                 '</div>' +
-                '<button class="btn sm" type="button" data-act="book-alt" data-trip="' + altTrip.id + '">حجز البديل فوراً</button>' +
+                '<button class="btn sm" type="button" data-act="book-alt" data-trip="' + altTrip.id + '">تسجيل البديل فوراً</button>' +
               '</div>' +
             '</section>'
           : '') +
@@ -672,7 +674,7 @@
     const notifHtml = list.map((n) => {
       const alt = n.altTripId ? trip(n.altTripId) : null;
       const altBtn = alt && !bookingFor(s, alt.id)
-        ? '<button class="btn sm" style="margin-top:6px" type="button" data-act="book" data-trip="' + alt.id + '">احجز البديل (' + esc(alt.time) + ')</button>'
+        ? '<button class="btn sm" style="margin-top:6px" type="button" data-act="book" data-trip="' + alt.id + '">سجّل في البديل (' + esc(alt.time) + ')</button>'
         : '';
       return '<div class="trip-row" style="align-items:flex-start;flex-direction:column">' +
         '<div class="row" style="width:100%"><span class="badge ' + (KIND_CLS[n.kind] || '') + '">' + esc(KIND_LABEL[n.kind] || 'إشعار') + '</span><span class="mute" style="margin-right:auto">' + MB.fmtTime(n.ts) + '</span></div>' +

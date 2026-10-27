@@ -39,7 +39,7 @@
     if (bad) el.style.background = 'var(--bad)';
     el.textContent = msg;
     document.body.appendChild(el);
-    setTimeout(() => el.remove(), 3800);
+    setTimeout(() => el.remove(), 3200);
   }
 
   // Generic modal form. onSubmit(data) returns an error string, or '' / undefined on success.
@@ -105,7 +105,7 @@
     const alt = findAlt(t);
     MB.update((s) => retireTrip(s, id));
     if (!isDraft) MB.notify('ملغاة: ' + titleOf(snap) + '. ' + (alt ? 'أقرب بديل: ' + titleOf(alt) : 'لا توجد رحلة بديلة في نفس اليوم'), 'info');
-    toast(isDraft ? 'حُذفت المسودة' : 'تم إلغاء الرحلة وإرسال التنبيه بالبديل');
+    toast(isDraft ? 'حُذفت المسودة ✓' : 'تم إلغاء الرحلة وإرسال التنبيه بالبديل ✓');
   }
 
   function mergeTrip(id) {
@@ -121,8 +121,8 @@
       n.booked += total;
       retireTrip(s, id);
     });
-    if (snap.published !== false) MB.notify('تم دمج ' + titleOf(snap) + ' في ' + titleOf(next) + ' (' + total + ' راكب)', 'info');
-    toast('تم دمج ' + total + ' راكب في الرحلة التالية');
+    if (snap.published !== false) MB.notify('تم دمج ' + titleOf(snap) + ' في ' + titleOf(next) + ' (' + total + ' مسجّل)', 'info');
+    toast('تم دمج ' + total + ' مسجّل في الرحلة التالية ✓');
   }
 
   // "زوّد حافلة": adds a draft bus for the same line/time (students stay on their booked trip)
@@ -137,7 +137,7 @@
     const nt = { id: MB.newTripId(), routeId: t.routeId, direction: t.direction, time: t.time, scheduledAt: t.scheduledAt, driverId: drv.id, busId: bus.id, capacity: bus.capacity, booked: 0, status: 'scheduled', startedAt: null, published: false };
     MB.update((s) => { s.trips.push(nt); });
     MB.notify('أُضيفت حافلة ' + plateOf(bus.id) + ' لـ' + titleOf(t) + ' بانتظار تأكيد النشر', 'info');
-    toast('أُضيفت الحافلة كمسودة — أكّد النشر بالأسفل');
+    toast('أُضيفت الحافلة كمسودة — اضغط "تأكيد نشر الجدول" بالأسفل ✓');
   }
 
   function tripFields(t, day) {
@@ -168,6 +168,8 @@
         s.trips.push(t);
       }
     });
+    draft = null;
+    refreshOpsPanel();
     return '';
   }
 
@@ -176,12 +178,12 @@
     if (t && !canChange(t)) return toast('لا يمكن تعديل رحلة ' + (MB.statusLabel[t.status] || ''), true);
     openModal(t ? 'تعديل الرحلة' : 'إضافة رحلة جديدة', tripFields(t, t ? dayKey(t.scheduledAt) : tripDay), (data) => {
       const err = saveTrip(data, id || null);
-      if (!err) toast(t ? 'تم تحديث الرحلة' : 'أُضيفت الرحلة كمسودة — أكّدها من نشر جدول اليوم بالأسفل');
+      if (!err) toast(t ? 'تم تحديث الرحلة ✓' : 'أُضيفت الرحلة كمسودة — اضغط "تأكيد نشر الجدول" لاعتمادها ✓');
       return err;
     }, 'حفظ');
   }
 
-  // ---------- 3.1 publish with review ----------
+  // ---------- Unified Daily Schedule & Publish ----------
   function freshDraft() {
     return tripsToday().filter((t) => t.status !== 'cancelled').map((t) => ({ ...t, src: t.id, removed: false, isNew: false }));
   }
@@ -232,7 +234,7 @@
     });
     draft = null;
     refreshOpsPanel();
-    toast('تم النشر: ' + kept + ' رحلة، ' + added + ' حافلة جديدة، ' + cancelled.length + ' ملغاة');
+    toast('تم نشر الجدول: ' + kept + ' رحلة، ' + added + ' حافلة جديدة ✓');
   }
 
   function reopenAsDraft() {
@@ -240,97 +242,121 @@
     MB.update((s) => s.trips.forEach((t) => { if (dayKey(t.scheduledAt) === todayKey() && t.status === 'scheduled') t.published = false; }));
     draft = null;
     refreshOpsPanel();
-    toast('الجدول أصبح مسودة');
+    toast('الجدول أصبح مسودة ✓');
   }
 
-  function renderPublish() {
+  function renderUnifiedSchedule() {
     if (!draft) draft = freshDraft();
-    const n = (fn) => draft.filter(fn).length;
-    const summary = [
-      kpi('منشورة', n((d) => !d.removed && !d.isNew && d.published !== false)),
-      kpi('مسودات', n((d) => !d.removed && !d.isNew && d.published === false)),
-      kpi('جديدة', n((d) => !d.removed && d.isNew)),
-      kpi('محذوفة لليوم', n((d) => d.removed)),
-    ].join('');
+    const draftCount = draft.filter((d) => !d.removed && (d.isNew || d.published === false)).length;
+    const removedCount = draft.filter((d) => d.removed).length;
+    const hasPending = draftCount > 0 || removedCount > 0;
+
     const rows = draft.map((d, i) => {
       const locked = d.status === 'en_route' || d.status === 'arrived';
       let badge;
       if (d.removed) badge = '<span class="badge bad">محذوفة لليوم</span>';
-      else if (d.isNew) badge = '<span class="badge info">حافلة جديدة</span>';
+      else if (d.isNew) badge = '<span class="badge info">حافلة جديدة (مسودة)</span>';
       else if (d.published === false) badge = '<span class="badge warn">مسودة</span>';
+      else if (d.status === 'en_route') badge = '<span class="badge ok">في الطريق</span>';
+      else if (d.status === 'arrived') badge = '<span class="badge">وصلت</span>';
       else badge = '<span class="badge ok">منشورة</span>';
-      let actions;
-      if (d.removed) actions = '<button class="btn sm sec" data-act="pubRestore" data-i="' + i + '">استرجاع</button>';
-      else if (locked) actions = '<span class="mute">' + esc(MB.statusLabel[d.status]) + '</span>';
-      else actions = '<button class="btn sm bad" data-act="pubRemove" data-i="' + i + '">حذف لليوم</button> <button class="btn sm sec" data-act="pubBus" data-i="' + i + '">+ حافلة للخط</button>';
+
+      let actions = '';
+      if (d.removed) {
+        actions = '<button class="btn sm sec" data-act="pubRestore" data-i="' + i + '">استرجاع</button>';
+      } else if (locked) {
+        actions = '<span class="mute">—</span>';
+      } else {
+        if (d.src) {
+          actions += '<button class="btn sm sec" data-act="tripEdit" data-id="' + d.src + '">تعديل</button> ';
+        }
+        actions += '<button class="btn sm sec" data-act="pubBus" data-i="' + i + '">+ حافلة</button> ';
+        actions += '<button class="btn sm bad" data-act="pubRemove" data-i="' + i + '">حذف</button>';
+      }
+
       return '<tr class="' + (d.removed ? 'rm' : '') + '">' +
         '<td><input type="time" value="' + esc(d.time) + '" data-chg="pubTime" data-i="' + i + '" ' + (locked || d.removed ? 'disabled' : '') + '></td>' +
-        '<td>' + esc(routeName(d.routeId)) + ' · ' + dirLabel(d.direction) + '</td>' +
+        '<td>' + esc(routeName(d.routeId)) + ' · <b>' + dirLabel(d.direction) + '</b></td>' +
         '<td>' + esc(drvName(d.driverId)) + '</td>' +
         '<td>' + esc(plateOf(d.busId)) + ' <span class="mute">(' + d.capacity + ')</span></td>' +
+        '<td>' + (d.booked || 0) + ' مسجّل</td>' +
         '<td>' + badge + '</td>' +
         '<td class="acts">' + actions + '</td></tr>';
     }).join('');
-    return head('نشر وتعديل جدول اليوم', '') +
-      '<div class="grid g4">' + summary + '</div>' +
-      '<div class="card" style="margin-top:12px"><h3>مسودة الجدول</h3>' +
-      '<p class="mute" style="margin-top:0">عدّل المسودة كما تريد: احذف رحلة لليوم، غيّر الوقت، أو أضف حافلة لخط مزدحم. لا يُنشر أي تغيير قبل زر "تأكيد النشر".</p>' +
-      (draft.length ? table(['الوقت', 'الخط والاتجاه', 'السائق', 'الحافلة (السعة)', 'الحالة', 'إجراء'], rows) : empty('لا توجد رحلات لليوم.')) +
-      '<div class="row" style="justify-content:flex-end;margin-top:12px">' +
-      '<button class="btn sec" data-act="pubRefresh">تحديث من الجدول الحالي</button>' +
-      '<button class="btn sec" data-act="pubReopen">إعادة فتح الجدول كمسودة</button>' +
-      '<button class="btn ok" data-act="pubConfirm">تأكيد النشر</button></div></div>';
-  }
 
-  // ---------- 3.2 trips ----------
-  function renderTrips() {
-    const list = dayTrips(tripDay);
-    const rows = list.map((t) => {
-      const editable = canChange(t);
-      const acts = editable
-        ? '<button class="btn sm sec" data-act="tripEdit" data-id="' + t.id + '">تعديل</button> <button class="btn sm bad" data-act="tripCancel" data-id="' + t.id + '">إلغاء</button>'
-        : '<span class="mute">—</span>';
-      return '<tr><td>' + esc(t.time) + '</td><td>' + esc(routeName(t.routeId)) + ' · ' + dirLabel(t.direction) + '</td><td>' + esc(drvName(t.driverId)) + '</td><td>' + esc(plateOf(t.busId)) + ' <span class="mute">(' + t.capacity + ')</span></td><td>' + t.booked + ' مسجّل</td><td>' + badgeStatus(t) + '</td><td class="acts">' + acts + '</td></tr>';
-    }).join('');
-    return head('إدارة الرحلات', '<div class="row toolbar"><input type="date" data-chg="tripDay" value="' + esc(tripDay) + '"><button class="btn" data-act="tripAdd">+ إضافة رحلة</button></div>') +
+    return head('جدول رحلات اليوم والنشر', '<div class="row toolbar">' +
+        '<button class="btn" data-act="tripAdd">+ إضافة رحلة جديدة</button>' +
+        '<button class="btn sec" data-act="pubReopen">إعادة فتح كمسودة</button>' +
+        '<button class="btn ok" data-act="pubConfirm">تأكيد نشر الجدول' + (hasPending ? ' (' + (draftCount + removedCount) + ' تعديل)' : '') + '</button>' +
+      '</div>') +
       '<div class="card">' +
-      (list.length ? table(['الوقت', 'الخط والاتجاه', 'السائق', 'الحافلة', 'الحجز', 'الحالة', 'إجراءات'], rows) : empty('لا توجد رحلات في هذا اليوم. اضغط "إضافة رحلة".')) +
-      '<p class="adm-note">الرحلات الجديدة تُضاف كمسودة وتظهر للطلاب بعد تأكيد النشر من قسم نشر الجدول بالأسفل.</p></div>';
+        (hasPending
+          ? '<div class="row" style="background:var(--warn-bg);color:var(--warn);border:1px solid #f3d58a;border-radius:8px;padding:8px 12px;margin-bottom:10px;justify-content:space-between">' +
+              '<b>لديك تعديلات أو مسودات غير منشورة — اضغط «تأكيد نشر الجدول» لتظهر للطلاب والسائقين.</b>' +
+              '<button class="btn sm ok" data-act="pubConfirm">تأكيد النشر الآن</button>' +
+            '</div>'
+          : '') +
+        (draft.length ? table(['الوقت', 'الخط والاتجاه', 'السائق', 'الحافلة (السعة)', 'التسجيل', 'الحالة', 'إجراءات'], rows) : empty('لا توجد رحلات لليوم. اضغط "+ إضافة رحلة جديدة".')) +
+        '<p class="adm-note">يمكنك تعديل الوقت مباشرة أو إضافة حافلة أو حذف رحلة لليوم، ثم ضغط «تأكيد نشر الجدول» لاعتماد كافة التغييرات دفعة واحدة.</p>' +
+      '</div>';
   }
 
-  // ---------- 3.3 demand board ----------
+  // ---------- Demand & Action Needed Board ----------
   function renderDemand() {
     const trips = tripsToday().filter((t) => t.status !== 'cancelled' && t.status !== 'arrived' && t.direction === 'go');
-    const booked = trips.reduce((a, t) => a + t.booked, 0);
-    const cap = trips.reduce((a, t) => a + t.capacity, 0);
-    const weak = trips.filter((t) => canChange(t) && fillPct(t) < 30).length;
-    const crowded = trips.filter((t) => t.booked > t.capacity).length;
+    const actionTrips = trips.filter((t) => canChange(t) && (fillPct(t) < 30 || t.booked > t.capacity));
+
+    const alertRows = actionTrips.map((t) => {
+      const p = fillPct(t);
+      const isCrowded = t.booked > t.capacity;
+      const next = nextTripOf(t);
+      const reason = isCrowded
+        ? '<span class="badge bad">مزدحمة (' + t.booked + ' مسجّل / سعة ' + t.capacity + ')</span>'
+        : '<span class="badge warn">ضعيفة الإشغال (' + t.booked + ' مسجّل · ' + p + '%)</span>';
+      const btns = isCrowded
+        ? '<button class="btn sm ok" data-act="demAddBus" data-id="' + t.id + '">+ زوّد حافلة</button>'
+        : '<button class="btn sm sec" data-act="demMerge" data-id="' + t.id + '"' + (next ? '' : ' disabled title="لا توجد رحلة تالية"') + '>دمج في التالية</button> ' +
+          '<button class="btn sm bad" data-act="demCancel" data-id="' + t.id + '">إلغاء</button>';
+      return '<div class="row" style="justify-content:space-between;padding:8px 10px;background:var(--card);border:1px solid var(--line);border-radius:8px;margin-top:6px">' +
+        '<div class="row" style="gap:8px"><b>' + esc(titleOf(t)) + '</b> ' + reason + '</div>' +
+        '<div class="acts">' + btns + '</div>' +
+      '</div>';
+    }).join('');
+
     const rows = trips.map((t) => {
       const p = fillPct(t);
       const weakRow = canChange(t) && p < 30;
       let acts = '';
       if (weakRow) {
         const next = nextTripOf(t);
-        acts += '<button class="btn sm bad" data-act="demCancel" data-id="' + t.id + '">إلغاء</button> ';
         acts += '<button class="btn sm sec" data-act="demMerge" data-id="' + t.id + '"' + (next ? '' : ' disabled title="لا توجد رحلة تالية"') + '>دمج</button> ';
+        acts += '<button class="btn sm bad" data-act="demCancel" data-id="' + t.id + '">إلغاء</button> ';
       }
-      if (t.booked > t.capacity && canChange(t)) acts += '<div class="mute" style="font-size:12.5px;margin-bottom:4px">عدد المسجلين أكبر من سعة الحافلة</div><button class="btn sm ok" data-act="demAddBus" data-id="' + t.id + '">زوّد حافلة</button>';
+      if (t.booked > t.capacity && canChange(t)) {
+        acts += '<button class="btn sm ok" data-act="demAddBus" data-id="' + t.id + '">+ زوّد حافلة</button>';
+      }
       return '<tr><td>' + esc(titleOf(t)) + '</td><td>' + badgeStatus(t) + '</td>' +
-        '<td style="min-width:160px"><div class="bar"><i style="width:' + Math.min(100, p) + '%"></i></div></td>' +
+        '<td style="min-width:150px"><div class="bar"><i style="width:' + Math.min(100, p) + '%"></i></div></td>' +
         '<td>' + t.booked + ' مسجّل <span class="mute">(' + p + '%)</span></td>' +
-        '<td class="acts">' + (acts || '<span class="mute">—</span>') + '</td></tr>';
+        '<td class="acts">' + (acts || '<span class="mute">متوازنة ✓</span>') + '</td></tr>';
     }).join('');
-    return head('لوحة الطلب والإشغال المباشر', '') +
-      '<div class="grid g4">' + kpi('الحجوزات اليوم', booked) + kpi('إجمالي السعة', cap) + kpi('نسبة التسجيل', (cap ? Math.round((booked / cap) * 100) : 0) + '%') + kpi('رحلات ضعيفة / مزدحمة', weak + ' / ' + crowded) + '</div>' +
-      '<div class="card" style="margin-top:12px"><h3>الرحلات النشطة اليوم</h3>' +
-      (trips.length ? table(['الرحلة', 'الحالة', 'نسبة التسجيل', 'المسجّلون', 'إجراء'], rows) : empty('لا توجد رحلات نشطة اليوم.')) +
-      '<p class="adm-note">ضعيفة: نسبة التسجيل أقل من 30%. مزدحمة: عدد المسجلين أكبر من سعة الحافلة. الإجراءات المعلّقة تُنفَّذ بنقرة وتُرسَل تنبيهاً تلقائياً.</p></div>';
+
+    return head('حالة الطلب والقرارات السريعة', '') +
+      (actionTrips.length
+        ? '<div class="card" style="background:var(--warn-bg);border-color:#f3d58a;margin-bottom:12px">' +
+            '<h3 style="margin:0 0 4px;color:var(--warn)">⚡ رحلات تحتاج قرارك (' + actionTrips.length + ')</h3>' +
+            alertRows +
+          '</div>'
+        : '') +
+      '<div class="card">' +
+        '<h3>إشغال رحلات الذهاب اليوم</h3>' +
+        (trips.length ? table(['الرحلة', 'الحالة', 'مؤشر التسجيل', 'المسجّلون', 'إجراء سريع'], rows) : empty('لا توجد رحلات ذهاب نشطة اليوم.')) +
+      '</div>';
   }
 
   function renderOpsHtml() {
-    return '<div style="margin-top:18px">' + renderDemand() + '</div>' +
-      '<div style="margin-top:18px">' + renderTrips() + '</div>' +
-      '<div style="margin-top:18px">' + renderPublish() + '</div>';
+    return '<div style="margin-top:16px">' + renderDemand() + '</div>' +
+      '<div style="margin-top:16px">' + renderUnifiedSchedule() + '</div>';
   }
 
   function refreshOpsPanel() {
@@ -348,11 +374,12 @@
     markers = {};
     return head('المتابعة الحية وجدول اليوم', '<span class="live-pill"><i></i>مباشر</span>') +
       '<div id="liveMap" class="map live"></div>' +
-      '<div id="monStats" class="grid g4"></div>' +
-      '<div class="card" style="margin-bottom:12px"><h3>طلبات الركوب (Ready)</h3><div id="readyStats" class="row" style="flex-wrap:wrap;gap:8px"></div>' +
-      '<p class="adm-note">أعداد فقط لطلبات رحلات اليوم، بدون أي بيانات شخصية للطلاب.</p></div>' +
-      '<div class="card"><h3>الرحلات الجارية</h3>' +
-      '<div class="tbl"><table><thead><tr><th>الخط</th><th>السائق</th><th>التقدم</th><th>الركاب</th><th>طلبات نشطة</th><th>تم الركوب</th><th>الحالة</th></tr></thead><tbody id="monBody"></tbody></table></div>' +
+      '<div class="card">' +
+        '<div class="row" style="justify-content:space-between;margin-bottom:10px;flex-wrap:wrap">' +
+          '<h3 style="margin:0">الحافلات الجارية وطلبات الركوب (Ready)</h3>' +
+          '<div id="readyStats" class="row" style="flex-wrap:wrap;gap:6px"></div>' +
+        '</div>' +
+        '<div class="tbl"><table><thead><tr><th>الخط</th><th>السائق</th><th>التقدم</th><th>المسجّلون</th><th>طلبات نشطة</th><th>تم الركوب</th><th>الحالة</th></tr></thead><tbody id="monBody"></tbody></table></div>' +
       '</div>' +
       '<div id="opsPanel">' + renderOpsHtml() + '</div>';
   }
@@ -382,9 +409,6 @@
   function updateMonitor() {
     if (cur !== 'monitor' || !$('#monBody')) return;
     const en = MB.state.trips.filter((t) => t.status === 'en_route');
-    const pax = en.reduce((a, t) => a + t.booked, 0);
-    const avg = en.length ? Math.round((en.reduce((a, t) => a + MB.progressOf(t), 0) / en.length) * 100) : 0;
-    $('#monStats').innerHTML = kpi('حافلات في الطريق', en.length) + kpi('الركاب على متنها', pax) + kpi('متوسط التقدم', avg + '%');
     $('#monBody').innerHTML = en.length ? en.map((t) => {
       const p = MB.position(t) || { progress: MB.progressOf(t), paused: false };
       const pctv = Math.round(p.progress * 100);
@@ -407,8 +431,8 @@
         else if (cnt[k.status] != null) cnt[k.status]++;
       });
       const chip = (cls, label, n) => '<span class="badge ' + cls + '">' + esc(label) + ': ' + n + '</span>';
-      rs.innerHTML = chip('warn', 'منتظر', cnt.waiting) + chip('info', 'مقبول (جارٍ الركوب)', cnt.accepted) +
-        chip('ok', 'تم الركوب', cnt.boarded) + chip('bad', 'اعتذر السائق', cnt.skipped) + chip('', 'فاتهم الباص', cnt.passed);
+      rs.innerHTML = chip('warn', 'منتظر', cnt.waiting) + chip('info', 'جارٍ الركوب', cnt.accepted) +
+        chip('ok', 'تم الركوب', cnt.boarded) + chip('', 'فاتهم الباص', cnt.passed);
     }
 
     if (map && window.L) {
@@ -439,7 +463,7 @@
         const cap = ts.reduce((a, t) => a + t.capacity, 0);
         return [lineLabel(r), ts.length, booked, cap, cap ? Math.round((booked / cap) * 100) : 0];
       });
-      return { name: 'passengers-per-line', head: ['الخط', 'عدد الرحلات', 'إجمالي الحجوزات', 'إجمالي السعة', 'نسبة التسجيل %'], rows };
+      return { name: 'passengers-per-line', head: ['الخط', 'عدد الرحلات', 'إجمالي المسجّلين', 'إجمالي السعة', 'نسبة التسجيل %'], rows };
     }
     if (kind === 'punct') {
       const rows = trips.filter((t) => t.status === 'arrived' && t.startedAt).map((t) => {
@@ -479,7 +503,7 @@
     const ratePct = p.rows.length ? Math.round((onTime / p.rows.length) * 100) : null;
     const pax = MB.state.trips.filter((t) => t.status !== 'cancelled').reduce((a, t) => a + t.booked, 0);
     return head('التقارير والتصدير', '<div class="row no-print"><button class="btn sec" data-act="print">طباعة / حفظ PDF</button></div>') +
-      '<div class="grid g4">' + kpi('إجمالي الحجوزات', pax) + kpi('نسبة الالتزام بالمواعيد', ratePct == null ? '—' : ratePct + '%') + kpi('رحلات منتهية', p.rows.length) + '</div>' +
+      '<div class="grid g4">' + kpi('إجمالي المسجّلين', pax) + kpi('نسبة الالتزام بالمواعيد', ratePct == null ? '—' : ratePct + '%') + kpi('رحلات منتهية', p.rows.length) + '</div>' +
       '<div class="card" style="margin-top:12px"><div class="row"><h3 class="grow">عدد الركاب لكل خط</h3><button class="btn sm no-print" data-act="rep" data-kind="lines">تحميل CSV</button></div>' + reportTable('lines') + '</div>' +
       '<div class="card"><div class="row"><h3 class="grow">الالتزام بالمواعيد</h3><button class="btn sm no-print" data-act="rep" data-kind="punct">تحميل CSV</button></div>' + reportTable('punct') + '</div>';
   }
@@ -518,12 +542,10 @@
 
   // ---------- 3.9 privacy ----------
   function renderPrivacy() {
-    return head('سياسة الخصوصية', '') +
-      '<div class="card priv"><h3>ما تراه كل جهة</h3><ul>' +
+    return '<div class="card priv"><h3>ضوابط الخصوصية المطبقة</h3><ul>' +
       '<li>السائق يرى <b>مواقع طلبات الركوب</b> المجهولة على مساره فقط، ولا يرى أسماء الطلاب أو أرقام هواتفهم.</li>' +
       '<li>لا تُعرض <b>أرقام هواتف الطلاب</b> في أي شاشة من لوحة الإدارة أو في التقارير المصدّرة.</li>' +
       '<li>التقارير المصدّرة تحتوي على أعداد وإحصائيات مجمّعة (ركاب الخطوط، الالتزام بالمواعيد).</li>' +
-      '<li>شكاوى الطلاب تُعرض للإدارة فقط.</li>' +
       '</ul></div>';
   }
 
@@ -545,9 +567,9 @@
     const readyActive = (s.pickups || []).filter((k) => todayIds.has(k.tripId) && (k.status === 'accepted' || k.status === 'boarding')).length;
     el.innerHTML = [
       kpiCard('ok', 'رحلات نشطة', active, 'حافلات في الطريق الآن'),
-      kpiCard('info', 'ركاب اليوم', riders, 'حجوزات رحلات اليوم'),
-      kpiCard('warn', 'نسبة الإشغال', occ + '%', 'من إجمالي المقاعد اليوم'),
-      kpiCard('brand', 'طلبات Ready النشطة', readyActive, 'طلبات ركوب مقبولة لرحلات اليوم'),
+      kpiCard('info', 'مسجّلو اليوم', riders, 'إجمالي تسجيلات اليوم'),
+      kpiCard('warn', 'نسبة الإشغال', occ + '%', 'من إجمالي سعة الأسطول اليوم'),
+      kpiCard('brand', 'طلبات Ready النشطة', readyActive, 'طلبات ركوب جارية الآن'),
     ].join('');
   }
 
@@ -597,7 +619,7 @@
     },
     pubRestore: ({ i }) => { if (draft[+i]) { draft[+i].removed = false; refreshOpsPanel(); } },
     pubBus: ({ i }) => addDraftBus(+i),
-    pubRefresh: () => { draft = null; refreshOpsPanel(); toast('تم تحديث المسودة من الجدول الحالي'); },
+    pubRefresh: () => { draft = null; refreshOpsPanel(); toast('تم تحديث المسودة من الجدول الحالي ✓'); },
     pubReopen: () => reopenAsDraft(),
     pubConfirm: () => confirmPublish(),
     tripAdd: () => openTripModal(null),
@@ -609,7 +631,7 @@
     rep: ({ kind }) => {
       const d = reportData(kind);
       downloadCsv(d.name + '-' + todayKey() + '.csv', toCsv(d.head, d.rows));
-      toast('تم تنزيل ملف CSV (UTF-8 مع BOM)');
+      toast('تم تنزيل ملف CSV ✓');
     },
     print: () => window.print(),
     cmpToggle: ({ id }) => MB.update((s) => {
@@ -625,7 +647,7 @@
       MB.update((s) => { s.policies.lastReturn = lastReturn; s.policies.rules = rules; });
       polDraft = null;
       renderView();
-      toast('تم حفظ السياسات وستظهر للجميع');
+      toast('تم حفظ السياسات ✓');
     },
   };
 
@@ -633,10 +655,13 @@
     pubTime: (v, d) => { if (draft[+d.i]) draft[+d.i].time = v; },
     tripDay: (v) => { if (v) { tripDay = v; refreshOpsPanel(); } },
     cmpFilter: (v) => { cmpCat = v; renderView(); },
-    cmpAssign: (v, d) => MB.update((s) => {
-      const r = s.reports.find((x) => x.id === d.id);
-      if (r) r.assignee = v.trim();
-    }),
+    cmpAssign: (v, d) => {
+      MB.update((s) => {
+        const r = s.reports.find((x) => x.id === d.id);
+        if (r) r.assignee = v.trim();
+      });
+      toast('تم حفظ اسم المسؤول ✓');
+    },
   };
 
   const INPUTS = {
