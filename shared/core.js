@@ -101,26 +101,15 @@
     return trips;
   }
 
-  function seedPickups(trips) {
-    // a few anonymous students already waiting ahead of each live bus, so the driver screen is never empty
-    const out = [];
-    let n = 1;
-    trips.filter((t) => t.status === 'en_route').forEach((t) => {
-      const p0 = Math.min(0.9, (Date.now() - t.startedAt) / TRIP_MS);
-      [0.12, 0.3, 0.5].forEach((d, k) => {
-        const p = p0 + d; if (p >= 0.97) return;
-        const [lat, lng] = lerpAlong(polyOf(t), p);
-        out.push({ id: 'pk' + n++, tripId: t.id, lat: lat + 0.0004, lng: lng + 0.0004, progress: p,
-          ts: Date.now() - (k + 1) * 40000, status: 'accepted', mine: false });
-      });
-    });
-    return out;
+  function seedPickups() {
+    // No pre-seeded students: a student only appears to the driver when they stand on the route line and tap Ready themselves.
+    return [];
   }
 
   function seed() {
     const trips = seedTrips();
     return {
-      v: 2,
+      v: 3,
       trips,
       pickups: seedPickups(trips),
       me: { name: 'أحمد محمد', studentId: '20231547' },
@@ -154,7 +143,7 @@
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
-      if (s && s.v === 2 && Array.isArray(s.trips)) {
+      if (s && s.v === 3 && Array.isArray(s.trips)) {
         const hasOpenGo = s.trips.some((t) => t.direction === 'go' && (t.status === 'scheduled' || t.status === 'at_start'));
         if (hasOpenGo) return s;
       }

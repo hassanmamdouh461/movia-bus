@@ -303,14 +303,18 @@
     toast('اختر رحلة ذهاب بديلة من القائمة');
   }
 
-  // Ready: send my pickup point (snapped onto the path by MB.requestPickup). Returns false if the bus already passed it.
+  // Ready: student MUST be on/near the route line (within 250m) and ahead of the bus, and press Ready themselves.
   function submitPickup(tid, lat, lng) {
     const t = trip(tid);
     if (!t) return true;
     const pos = MB.position(t);
     const sn = MB.snap(t, lat, lng);
+    if (sn.distM > 250) {
+      toast('لازم تكون واقف على مسار الخط — اضغط مباشرةً على الخط الملوّن في الخريطة');
+      return false;
+    }
     if (pos && sn.progress < pos.progress - 0.005) {
-      toast('الباص عدّى المكان ده — اختار مكان قدّام الباص');
+      toast('الباص عدّى المكان ده — اختار نقطة على الخط قدّام الباص');
       return false;
     }
     MB.requestPickup(tid, lat, lng);
@@ -318,7 +322,7 @@
     draft.flyPk = true;
     draft.pickMode = null;
     draft.locating = null;
-    toast('تم إرسال مكانك للسائق ✓');
+    toast('تم إرسال مكانك على الخط للسائق ✓');
     return true;
   }
 
@@ -326,7 +330,7 @@
     const s = MB.state;
     const t = trip(tid);
     if (!t || !bookingFor(s, tid) || (t.status !== 'at_start' && t.status !== 'en_route')) {
-      return toast('زر الجاهزية يتفعل عند انطلاق رحلتك المسجّلة');
+      return toast('سجّل في الرحلة وانتظر بدء تحركها، ثم قف على الخط واضغط الزر بنفسك');
     }
     if (!navigator.geolocation) {
       draft.pickMode = tid;
@@ -343,7 +347,7 @@
       () => {
         draft.locating = null;
         draft.pickMode = tid;
-        toast('اضغط على الخريطة لتحديد مكانك');
+        toast('اضغط على مسار الخط في الخريطة لتحديد مكان وقوفك');
         render();
       },
       { timeout: 4000, maximumAge: 30000, enableHighAccuracy: false }
@@ -368,7 +372,7 @@
 
   function cancelPickup(id) {
     MB.cancelPickup(id);
-    toast('تم إلغاء طلب الركوب');
+    toast('تم إلغاء ظهورك للسائق');
   }
 
   function shareTrip(tid) {
@@ -425,28 +429,38 @@
   function readyBoxHtml(s, t) {
     if (t.direction === 'back') return '';
     const pk = myPk(s, t.id);
-    const eligible = !!bookingFor(s, t.id) && (t.status === 'at_start' || t.status === 'en_route');
-    if (!pk && !eligible && draft.locating !== t.id && draft.pickMode !== t.id) {
-      return '<div class="ready-hint">💡 زر <b>«أنا جاهز Ready»</b> يتفعل تلقائياً عند انطلاق رحلتك المسجّلة لإشعار السائق بمكانك.</div>';
-    }
+    const isBooked = !!bookingFor(s, t.id);
+    const isRunning = (t.status === 'at_start' || t.status === 'en_route');
+    const eligible = isBooked && isRunning;
+
     let body;
     if (pk && (pk.status === 'waiting' || pk.status === 'accepted')) {
       body = '<div class="row"><span class="grow">' + pkChip(pk) + '</span>' +
-        '<button class="btn sec sm" type="button" data-act="pk-cancel" data-id="' + pk.id + '">إلغاء</button></div>';
+        '<button class="btn sec sm" type="button" data-act="pk-cancel" data-id="' + pk.id + '">إلغاء ظهوري للسائق</button></div>';
     } else if (pk && (pk.status === 'boarding' || pk.status === 'boarded')) {
       body = '<div class="row"><span class="grow">' + pkChip(pk) + '</span></div>';
     } else if (draft.locating === t.id) {
-      body = '<p class="mute" style="margin:0">جاري تحديد موقعك…</p>';
+      body = '<p class="mute" style="margin:0">جاري التحقق من وقوفك على مسار الخط…</p>';
     } else if (draft.pickMode === t.id) {
-      body = '<p style="margin:0 0 8px;font-weight:700">اضغط على الخريطة لتحديد مكانك</p>' +
-        '<div class="row"><button class="btn sec sm" type="button" data-act="ready-demo" data-trip="' + t.id + '">استخدم موقع تجريبي</button>' +
+      body = '<p style="margin:0 0 8px;font-weight:700">اضغط على الخط الملوّن في الخريطة لتحديد مكان وقوفك بالضبط:</p>' +
+        '<div class="row"><button class="btn sm" type="button" data-act="ready-demo" data-trip="' + t.id + '">محاكاة وقوفي على الخط قدّام الباص</button>' +
         '<button class="btn sec sm" type="button" data-act="pick-cancel" data-trip="' + t.id + '">إلغاء</button></div>';
-    } else {
+    } else if (eligible) {
       body = (pk ? '<div class="row" style="margin-bottom:8px"><span class="grow">' + pkChip(pk) + '</span></div>' : '') +
-        '<div class="row"><span class="grow mute" style="font-size:13px">اضغط عشان السواق يعرف مكانك ويقف لك.</span>' +
-        '<button class="btn" type="button" data-act="ready" data-trip="' + t.id + '">أنا جاهز (Ready)</button></div>';
+        '<div class="row">' +
+          '<span class="grow mute" style="font-size:13px">أنت لن تظهر للسائق إلا عندما تقف على مسار الخط وتضغط هذا الزر بنفسك:</span>' +
+          '<button class="btn" type="button" data-act="ready" data-trip="' + t.id + '">أنا واقف على الخط — جاهز (Ready)</button>' +
+        '</div>';
+    } else {
+      const reason = !isBooked
+        ? 'سجّل في رحلة الذهاب أولاً، وعندما تقف على الخط اضغط الزر بنفسك لتظهر للسائق.'
+        : 'أنت غير ظاهر للسائق حالياً — عندما تبدأ الرحلة وتقف على مسار الخط، اضغط الزر بنفسك.';
+      body = '<div class="row">' +
+        '<span class="grow mute" style="font-size:13px">' + reason + '</span>' +
+        '<button class="btn" type="button" disabled>أنا واقف على الخط — جاهز (Ready)</button>' +
+      '</div>';
     }
-    return '<div class="ready-box"><h4>زر الجاهزية (Ready) — إشعار السائق بمكانك</h4>' + body + '</div>';
+    return '<div class="ready-box"><h4>زر الجاهزية (Ready) — إشعار السائق بوقوفك على الخط</h4>' + body + '</div>';
   }
 
   function dirTripsBoxHtml(s, activeTrip) {
@@ -567,7 +581,7 @@
           '<div class="tc-top">' +
             '<span class="avatar">' + esc(drvInitial(t)) + '</span>' +
             '<div class="grow">' +
-              '<b class="tc-driver">' + esc( label(t) ) + '</b>' +
+              '<b class="tc-driver">' + esc(label(t)) + '</b>' +
               '<div class="meta">' +
                 '<span>' + esc(drv.name) + '</span> · ' +
                 '<span class="plate">حافلة: ' + esc(bus.plate) + '</span> · ' +
