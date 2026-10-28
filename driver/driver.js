@@ -18,23 +18,19 @@
   }
   function saveDriverId(id) { try { localStorage.setItem(DRIVER_KEY, id); } catch (e) {} }
   let driverId = loadDriverId();
-  let selectedTripId = null;
 
   function driverTrips() {
     return MB.state.trips
-      .filter((t) => t.driverId === driverId && t.status !== 'cancelled')
+      .filter((t) => t.driverId === driverId && t.status !== 'cancelled' && t.published !== false)
       .sort((a, b) => a.scheduledAt - b.scheduledAt);
   }
 
+  /* Mandatory trip assigned by Admin in strict chronological order (driver cannot pick or skip) */
   function currentTrip() {
     const list = driverTrips();
-    if (selectedTripId) {
-      const found = list.find((t) => t.id === selectedTripId);
-      if (found) return found;
-    }
     return list.find((t) => t.status === 'en_route')
       || list.find((t) => t.status === 'at_start' || t.status === 'scheduled')
-      || list[0]
+      || list[list.length - 1]
       || null;
   }
 
@@ -234,6 +230,14 @@
     const s = trip.status;
     document.body.classList.toggle('pre-trip', s !== 'en_route');
     const paused = isPaused(trip);
+    const list = driverTrips();
+    const posInSched = list.findIndex((t) => t.id === trip.id);
+    const sb = $('schedBadge');
+    if (sb) {
+      sb.textContent = list.length
+        ? 'رحلة ' + (posInSched + 1) + ' من ' + list.length + ' · إلزامية من الإدارة 🔒'
+        : 'جدول إلزامي من الإدارة 🔒';
+    }
     $('tripTitle').textContent = MB.tripLabel(trip);
     const plate = (MB.bus[trip.busId] || {}).plate || '';
     $('tripMeta').textContent = 'حافلة: ' + plate + ' · المسجّلون: ' + trip.booked;
@@ -248,23 +252,23 @@
 
     const btn = $('btnMain');
     if (s === 'en_route') {
-      btn.textContent = 'أنهِ الرحلة';
+      btn.textContent = 'أنهِ الرحلة والانتقال للتالية';
       btn.className = 'btn big go-btn bad';
       btn.disabled = false;
     } else if (s === 'scheduled' || s === 'at_start') {
-      btn.textContent = 'ابدأ الرحلة';
+      btn.textContent = 'ابدأ الرحلة الإلزامية الآن';
       btn.className = 'btn big go-btn ok';
       btn.disabled = false;
     } else {
-      btn.textContent = 'إعادة تشغيل الرحلة (للتجربة)';
+      btn.textContent = 'أتممت جدول اليوم — إعادة فتح الجدول (للتجربة)';
       btn.className = 'btn big go-btn sec';
       btn.disabled = false;
     }
 
     $('hint').textContent =
       s === 'en_route' ? 'حالة الرحلة وموقعك يتحدثان تلقائياً للطلاب والإدارة لحظياً.' :
-      s === 'arrived' ? 'انتهت هذه الرحلة. يمكنك اختيار رحلة أخرى من القائمة أو إعادة تشغيلها للتجربة.' :
-      'اضغط «ابدأ الرحلة» عند التحرك من نقطة البداية لتظهر الحافلة فوراً للطلاب.';
+      s === 'arrived' ? 'أتممت جميع رحلات جدولك الإلزامي المعتمد من الإدارة لهذا اليوم ✓' :
+      'هذه رحلتك الإلزامية الحالية المقررة من الإدارة. اضغط «ابدأ الرحلة» عند التحرك من نقطة البداية.';
     $('chatSub').textContent = MB.tripLabel(trip);
   }
 
@@ -510,20 +514,45 @@
     });
   }
 
-  function renderTripSelect() {
+  function renderSchedule(cur) {
+    const box = $('drvSchedule');
+    if (!box) return;
     const list = driverTrips();
-    const sel = $('tripSel');
-    const cur = currentTrip();
-    sel.innerHTML = list.map((t) =>
-      '<option value="' + esc(t.id) + '"' + (cur && cur.id === t.id ? ' selected' : '') + '>' +
-      esc(MB.tripLabel(t)) + ' (' + esc(MB.statusLabel[t.status]) + ')</option>'
-    ).join('');
+    if (!list.length) {
+      box.innerHTML = '<div class="drv-sched-head"><strong>📋 جدولك اليومي من الإدارة</strong><span class="mute">لا توجد رحلات معتمدة لك حالياً</span></div>';
+      return;
+    }
+    const items = list.map((t, i) => {
+      const r = MB.R[t.routeId] || {};
+      const dir = t.direction === 'go' ? 'ذهاب' : 'عودة';
+      const isCur = cur && cur.id === t.id && t.status !== 'arrived';
+      const isDone = t.status === 'arrived';
+      const cls = isDone ? 'done' : isCur ? 'cur' : 'locked';
+      const stateTxt = isDone
+        ? '✓ تم التنفيذ'
+        : isCur
+          ? (t.status === 'en_route' ? '● جارية الآن' : '● رحلتك الإلزامية الآن')
+          : '🔒 تالية بالترتيب';
+      return '<div class="drv-sched-item ' + cls + '">' +
+        '<span class="drv-sched-num">' + (i + 1) + '</span>' +
+        '<div class="drv-sched-main">' +
+          '<strong>' + esc(t.time) + ' · ' + esc(r.name || '') + ' (' + dir + ')</strong>' +
+        '</div>' +
+        '<span class="drv-sched-tag">' + stateTxt + '</span>' +
+      '</div>';
+    }).join('');
+    box.innerHTML =
+      '<div class="drv-sched-head">' +
+        '<strong>📋 جدولك اليومي المعتمد من الإدارة (' + list.length + ' رحلات)</strong>' +
+        '<span class="mute">يُنفّذ بالترتيب الإلزامي ولا يمكن تخطي رحلة</span>' +
+      '</div>' +
+      '<div class="drv-sched-list">' + items + '</div>';
   }
 
   function refresh() {
-    renderTripSelect();
     checkNewRequests();
     const trip = currentTrip();
+    renderSchedule(trip);
     if (!trip) return;
 
     renderHeader(trip);
@@ -548,7 +577,6 @@
     sel.value = driverId;
     sel.onchange = () => {
       driverId = sel.value;
-      selectedTripId = null;
       saveDriverId(driverId);
       lastTripId = null;
       refresh();
@@ -556,12 +584,6 @@
   }
 
   function bindActions() {
-    $('tripSel').onchange = () => {
-      selectedTripId = $('tripSel').value;
-      lastTripId = null;
-      refresh();
-    };
-
     $('alertToggle').onclick = () => {
       alertsEnabled = !alertsEnabled;
       try { localStorage.setItem(ALERT_KEY, alertsEnabled ? '1' : '0'); } catch (e) {}
@@ -579,19 +601,34 @@
       unlockAudio();
       const t = currentTrip();
       if (!t) return;
-      if (t.status === 'scheduled' || t.status === 'at_start' || t.status === 'arrived') {
+      if (t.status === 'scheduled' || t.status === 'at_start') {
         MB.update((s) => {
           const x = s.trips.find((z) => z.id === t.id);
           if (x) { x.status = 'en_route'; x.startedAt = Date.now() - 45000; }
         });
         MB.notify('انطلقت الحافلة في ' + MB.tripLabel(t), 'bus');
-        toast('بدأت الرحلة وتم تفعيل البث التلقائي للموقع ✓');
+        toast('بدأت الرحلة الإلزامية وتم تفعيل البث التلقائي للموقع ✓');
       } else if (t.status === 'en_route') {
         MB.update((s) => {
           const x = s.trips.find((z) => z.id === t.id);
           if (x) x.status = 'arrived';
         });
-        toast('تم إنهاء الرحلة وتوقف بث الموقع تلقائياً ✓');
+        const next = currentTrip();
+        if (next && next.status !== 'arrived') {
+          toast('تم إنهاء الرحلة — انتقل جدولك تلقائياً للرحلة التالية: ' + MB.tripLabel(next) + ' ✓');
+        } else {
+          toast('تم إنهاء الرحلة وأتممت جميع رحلات جدولك اليومي ✓');
+        }
+      } else if (t.status === 'arrived') {
+        MB.update((s) => {
+          s.trips.forEach((z) => {
+            if (z.driverId === driverId && z.status === 'arrived') {
+              z.status = 'scheduled';
+              z.startedAt = null;
+            }
+          });
+        });
+        toast('تمت إعادة فتح جدول اليوم للتجربة ✓');
       }
     };
 

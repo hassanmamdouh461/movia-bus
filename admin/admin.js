@@ -223,7 +223,7 @@
           else if (canChange(x)) { cancelled.push({ ...x }); x.status = 'cancelled'; }
           return;
         }
-        if (canChange(x)) { x.time = d.time; x.scheduledAt = at(dayKey(x.scheduledAt), d.time); }
+        if (canChange(x)) { x.time = d.time; x.scheduledAt = at(dayKey(x.scheduledAt), d.time); x.driverId = d.driverId; }
         x.published = true;
         kept++;
       });
@@ -234,7 +234,7 @@
     });
     draft = null;
     refreshOpsPanel();
-    toast('تم نشر الجدول: ' + kept + ' رحلة، ' + added + ' حافلة جديدة ✓');
+    toast('تم نشر الجدول وإرساله كجدول إلزامي للسائقين (' + kept + ' رحلة، ' + added + ' حافلة جديدة) ✓');
   }
 
   function reopenAsDraft() {
@@ -274,10 +274,16 @@
         actions += '<button class="btn sm bad" data-act="pubRemove" data-i="' + i + '">حذف</button>';
       }
 
+      const drvCell = locked || d.removed
+        ? esc(drvName(d.driverId))
+        : '<select data-chg="pubDriver" data-i="' + i + '" style="width:auto;min-width:140px;padding:4px 8px">' +
+            MB.drivers.map((drv) => '<option value="' + esc(drv.id) + '"' + (drv.id === d.driverId ? ' selected' : '') + '>' + esc(drv.name) + '</option>').join('') +
+          '</select>';
+
       return '<tr class="' + (d.removed ? 'rm' : '') + '">' +
         '<td><input type="time" value="' + esc(d.time) + '" data-chg="pubTime" data-i="' + i + '" ' + (locked || d.removed ? 'disabled' : '') + '></td>' +
         '<td>' + esc(routeName(d.routeId)) + ' · <b>' + dirLabel(d.direction) + '</b></td>' +
-        '<td>' + esc(drvName(d.driverId)) + '</td>' +
+        '<td>' + drvCell + '</td>' +
         '<td>' + esc(plateOf(d.busId)) + ' <span class="mute">(' + d.capacity + ')</span></td>' +
         '<td>' + (d.booked || 0) + ' مسجّل</td>' +
         '<td>' + badge + '</td>' +
@@ -653,6 +659,7 @@
 
   const CHANGES = {
     pubTime: (v, d) => { if (draft[+d.i]) draft[+d.i].time = v; },
+    pubDriver: (v, d) => { if (draft[+d.i]) draft[+d.i].driverId = v; },
     tripDay: (v) => { if (v) { tripDay = v; refreshOpsPanel(); } },
     cmpFilter: (v) => { cmpCat = v; renderView(); },
     cmpAssign: (v, d) => {
