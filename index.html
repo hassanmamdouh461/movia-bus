@@ -118,19 +118,6 @@
     padding-top: 12px;
     border-top: 1px solid var(--line);
   }
-  .foot-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 10px;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 12px 16px;
-    font-size: 13.5px;
-    color: var(--mute);
-  }
 
   @media (max-width: 820px) {
     .roles-grid {
@@ -154,15 +141,6 @@
     .role-card {
       padding: 16px;
     }
-    .foot-bar {
-      flex-direction: column;
-      align-items: stretch;
-      text-align: center;
-      padding: 12px;
-    }
-    .foot-bar .btn {
-      width: 100%;
-    }
   }
 </style>
 </head>
@@ -177,7 +155,6 @@
           <p>نظام إدارة وتتبع حافلات نقل طلاب الجامعة — نسخة العرض التجريبية</p>
         </div>
       </div>
-      <span class="badge ok" id="liveSummary">بيانات العرض جاهزة</span>
     </div>
     <p class="mute" style="margin: 8px 0 0">
       اختر أي واجهة بالأسفل لتجربة النظام مباشرة. جميع الواجهات الثلاث متزامنة لحظياً؛ أي إجراء في واجهة السائق أو الإدارة ينعكس فوراً عند الطالب.
@@ -212,32 +189,8 @@
       <span class="role-enter"><span>دخول لوحة الإدارة</span><span>←</span></span>
     </a>
   </div>
-
-  <div class="foot-bar">
-    <span>فريق العمل: حسن ممدوح · محمد شحاته · أحمد عصام · عبدالله جمال · مولر باسم · كيرلس سمير</span>
-    <button class="btn sec sm" id="reset" type="button">إعادة ضبط البيانات الافتراضية</button>
-  </div>
 </div>
 
 <script src="shared/core.js"></script>
-<script>
-  (function () {
-    function updateInfo() {
-      var active = MB.state.trips.filter(function (t) { return t.status === 'en_route'; }).length;
-      var total = MB.state.trips.length;
-      document.getElementById('liveSummary').textContent = active + ' حافلات في الطريق الآن · ' + total + ' رحلة مجدولة';
-    }
-    updateInfo();
-    document.getElementById('reset').onclick = function () {
-      MB.reset();
-      updateInfo();
-      var t = document.createElement('div');
-      t.className = 'toast';
-      t.textContent = 'تمت إعادة ضبط البيانات الافتراضية بنجاح';
-      document.body.appendChild(t);
-      setTimeout(function () { t.remove(); }, 2500);
-    };
-  })();
-</script>
 </body>
 </html>
