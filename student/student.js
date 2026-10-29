@@ -579,7 +579,7 @@
       '<div class="home-col">' +
         '<section class="card m-order-2">' +
           '<div class="tc-top">' +
-            '<span class="avatar">' + esc(drvInitial(t)) + '</span>' +
+            '<span class="avatar"><img src="../shared/lum-crest.svg" alt="شعار جامعة اللوتس" width="34" height="34"></span>' +
             '<div class="grow">' +
               '<b class="tc-driver">' + esc(label(t)) + '</b>' +
               '<div class="meta">' +
@@ -653,7 +653,7 @@
     return '<div class="chat-card-wrap">' +
       '<section class="card">' +
         '<div class="chat-head">' +
-          '<span class="avatar">' + esc(drvInitial(t)) + '</span>' +
+          '<span class="avatar"><img src="../shared/lum-crest.svg" alt="شعار جامعة اللوتس" width="34" height="34"></span>' +
           '<div class="grow">' +
             '<b>' + esc(drv.name) + '</b>' +
             '<div class="meta"><span>' + esc(label(t)) + '</span> · <span class="plate">' + esc(bus.plate) + '</span></div>' +
