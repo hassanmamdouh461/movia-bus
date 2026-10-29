@@ -297,7 +297,7 @@
       '</div>') +
       '<div class="card">' +
         (hasPending
-          ? '<div class="row" style="background:var(--warn-bg);color:var(--warn);border:1px solid #f3d58a;border-radius:8px;padding:8px 12px;margin-bottom:10px;justify-content:space-between">' +
+          ? '<div class="row" style="background:var(--warn-bg);color:var(--warn);border:1px solid #fed7aa;border-radius:8px;padding:8px 12px;margin-bottom:10px;justify-content:space-between">' +
               '<b>لديك تعديلات أو مسودات غير منشورة — اضغط «تأكيد نشر الجدول» لتظهر للطلاب والسائقين.</b>' +
               '<button class="btn sm ok" data-act="pubConfirm">تأكيد النشر الآن</button>' +
             '</div>'
@@ -349,7 +349,7 @@
 
     return head('حالة الطلب والقرارات السريعة', '') +
       (actionTrips.length
-        ? '<div class="card" style="background:var(--warn-bg);border-color:#f3d58a;margin-bottom:12px">' +
+        ? '<div class="card" style="background:var(--warn-bg);border-color:#fed7aa;margin-bottom:12px">' +
             '<h3 style="margin:0 0 4px;color:var(--warn)">⚡ رحلات تحتاج قرارك (' + actionTrips.length + ')</h3>' +
             alertRows +
           '</div>'

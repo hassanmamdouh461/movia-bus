@@ -22,8 +22,8 @@
   /* Semantic status colors — accessible, clear */
   --ok: #15803d;
   --ok-bg: #dcfce7;
-  --warn: #b45309;
-  --warn-bg: #fef3c7;
+  --warn: #ea580c;
+  --warn-bg: #fff7ed;
   --bad: #dc2626;
   --bad-bg: #fee2e2;
   --info: #042959;
@@ -246,6 +246,10 @@ a {
 .btn.warn {
   background: var(--warn);
   color: #fff;
+}
+
+.btn.warn:hover:not(:disabled) {
+  background: #c2410c;
 }
 
 .btn.sm {

@@ -179,7 +179,7 @@ body {
 .status-pill[data-state="paused"] {
   background: var(--warn-bg);
   color: var(--warn);
-  border-color: #f3d58a;
+  border-color: #fed7aa;
 }
 
 .status-pill[data-state="paused"] .pulse {
