@@ -100,8 +100,8 @@ body {
 }
 
 .drv-sched-item.cur .drv-sched-num {
-  background: #111827;
-  color: #c7f23a;
+  background: var(--brand);
+  color: #fff;
 }
 
 .drv-sched-item.done .drv-sched-num {
@@ -125,8 +125,8 @@ body {
 }
 
 .drv-sched-item.cur .drv-sched-tag {
-  background: #111827;
-  color: #c7f23a;
+  background: var(--brand);
+  color: #fff;
 }
 
 .drv-sched-item.done .drv-sched-tag {
@@ -214,9 +214,9 @@ body {
 }
 
 .chain li.cur {
-  background: #111827;
-  color: #c7f23a;
-  border-color: #111827;
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
   font-weight: 800;
 }
 
@@ -229,9 +229,9 @@ body {
 }
 
 .go-btn.ok {
-  background: #c7f23a;
-  color: #111827;
-  box-shadow: 0 4px 16px rgba(199, 242, 58, 0.45);
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(4, 41, 89, 0.35);
 }
 
 .go-btn.bad {
@@ -291,7 +291,7 @@ body {
 .eta-num {
   font-size: clamp(26px, 5vw, 34px);
   font-weight: 900;
-  color: #111827;
+  color: var(--brand);
   line-height: 1.1;
 }
 
@@ -548,10 +548,10 @@ body.pre-trip .chat-input {
   gap: 4px;
   padding: 16px 18px;
   border-radius: 20px;
-  border: 3px solid #c7f23a;
-  background: #111827;
+  border: 3px solid #2b90d9;
+  background: #042959;
   color: #fff;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 36px rgba(4, 41, 89, 0.45);
   cursor: pointer;
   overflow-wrap: anywhere;
 }
@@ -579,13 +579,13 @@ body.pre-trip .chat-input {
   font-size: 20px;
   font-weight: 700;
   line-height: 1.35;
-  color: #e5e7eb;
+  color: #e2e8f0;
 }
 
 .alert-banner .alert-more {
   font-size: 20px;
   font-weight: 800;
-  color: #c7f23a;
+  color: #93c5fd;
 }
 
 .alert-banner .alert-more[hidden] {
