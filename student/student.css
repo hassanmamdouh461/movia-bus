@@ -47,7 +47,7 @@ body {
 }
 
 .subnav a.on {
-  color: var(--brand);
+  color: #111827;
   border-bottom-color: var(--brand);
 }
 
@@ -55,7 +55,7 @@ body {
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--bad);
   color: #fff;
   font-size: 11px;
@@ -88,7 +88,8 @@ body.track .subnav {
 }
 
 .map-card {
-  padding: 12px;
+  padding: 14px;
+  border-radius: 20px;
 }
 
 .map-head {
@@ -103,24 +104,24 @@ body.track .subnav {
 .dir-switch {
   display: inline-flex;
   background: var(--bg);
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 4px;
+  gap: 4px;
 }
 
 .dir-btn {
   appearance: none;
   border: 0;
-  border-radius: 6px;
-  padding: 5px 16px;
+  border-radius: var(--r-pill);
+  padding: 6px 18px;
   font: inherit;
   font-size: 13.5px;
   font-weight: 800;
   color: var(--ink-soft);
   background: transparent;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
 .dir-btn:hover {
@@ -128,8 +129,9 @@ body.track .subnav {
 }
 
 .dir-btn.on {
-  background: var(--brand);
-  color: #fff;
+  background: #111827;
+  color: #c7f23a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 /* Compact summary bar when student already has a 'go' booking */
@@ -138,11 +140,11 @@ body.track .subnav {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 9px 12px;
   margin-bottom: 10px;
   background: var(--ok-bg);
-  border: 1px solid #b8e2cc;
-  border-radius: 9px;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
   flex-wrap: wrap;
 }
 
@@ -215,7 +217,7 @@ body.track .subnav {
 }
 
 .ret-chip.on {
-  border-color: var(--brand);
+  border-color: #111827;
   background: var(--brand-soft);
 }
 
@@ -224,15 +226,15 @@ body.track .subnav {
   color: var(--ink-soft);
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 7px 10px;
+  border-radius: 10px;
+  padding: 8px 12px;
   margin-bottom: 8px;
 }
 
 .dir-note.ok {
   background: var(--ok-bg);
   color: var(--ok);
-  border-color: #b8e2cc;
+  border-color: #bbf7d0;
 }
 
 .dir-note.warn {
@@ -261,17 +263,17 @@ body.track .subnav {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   flex-wrap: wrap;
   transition: border-color 0.15s, background 0.15s;
 }
 
 .dir-row.on {
-  border-color: var(--brand);
-  background: #f6fbf8;
+  border-color: #111827;
+  background: #fdfef9;
 }
 
 .dir-row-info {
@@ -296,7 +298,7 @@ body.track .subnav {
 
 .map-box {
   height: 340px;
-  border-radius: 10px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   margin: 0;
 }
@@ -313,17 +315,18 @@ body.track .subnav {
 
 .avatar {
   flex: none;
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--brand-soft);
-  color: var(--brand);
-  font-weight: 800;
-  font-size: 17px;
-  border: 1px solid #cce3d8;
+  background: #111827;
+  color: #c7f23a;
+  font-weight: 900;
+  font-size: 18px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 }
 
 .tc-driver {
@@ -355,10 +358,10 @@ body.track .subnav {
 
 /* Unified Single ETA Hero Box */
 .eta-hero {
-  background: var(--bg);
+  background: #f9fafb;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 12px 14px;
+  border-radius: 16px;
+  padding: 14px 16px;
   margin: 12px 0;
   display: flex;
   align-items: center;
@@ -373,10 +376,10 @@ body.track .subnav {
 }
 
 .eta-big {
-  font-size: clamp(22px, 4.5vw, 28px);
-  font-weight: 800;
-  color: var(--brand);
-  line-height: 1.2;
+  font-size: clamp(24px, 5vw, 32px);
+  font-weight: 900;
+  color: #111827;
+  line-height: 1.15;
   margin-top: 2px;
   overflow-wrap: anywhere;
 }
@@ -394,8 +397,8 @@ body.track .subnav {
   color: var(--mute);
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border-radius: var(--r-pill);
+  padding: 6px 12px;
 }
 
 .eta-hero-sub b {
@@ -414,10 +417,10 @@ body.track .subnav {
 .stepper li {
   flex: 1;
   text-align: center;
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   padding: 7px 6px;
-  border-radius: 7px;
+  border-radius: var(--r-pill);
   background: var(--bg);
   color: var(--mute);
   border: 1px solid var(--line);
@@ -426,13 +429,13 @@ body.track .subnav {
 .stepper li.done {
   background: var(--ok-bg);
   color: var(--ok);
-  border-color: #b8e2cc;
+  border-color: #bbf7d0;
 }
 
 .stepper li.cur {
-  background: var(--brand);
-  color: #fff;
-  border-color: var(--brand);
+  background: #111827;
+  color: #c7f23a;
+  border-color: #111827;
   font-weight: 800;
 }
 
@@ -440,8 +443,8 @@ body.track .subnav {
   background: var(--warn-bg);
   color: #78350f;
   border: 1px solid #fde68a;
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 12px;
+  padding: 10px 14px;
   font-size: 13px;
   margin-top: 10px;
 }
@@ -459,15 +462,15 @@ body.track .subnav {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 42px;
-  padding: 8px 10px;
+  min-height: 44px;
+  padding: 8px 12px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: var(--r-pill);
   background: var(--card);
   color: var(--ink);
   font: inherit;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 800;
   cursor: pointer;
   text-align: center;
   transition: background 0.15s, border-color 0.15s;
@@ -478,21 +481,21 @@ body.track .subnav {
 }
 
 .act-btn.pri {
-  background: var(--brand);
-  color: #fff;
-  border-color: var(--brand);
+  background: #111827;
+  color: #c7f23a;
+  border-color: #111827;
 }
 
 .act-btn.pri:hover {
-  background: var(--brand-hover);
+  background: #1f2937;
 }
 
 /* Ready Box & Compact Hint */
 .ready-hint {
   background: var(--bg);
   border: 1px dashed var(--line-strong);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 12px;
+  padding: 10px 14px;
   margin-top: 10px;
   font-size: 12.5px;
   color: var(--ink-soft);
@@ -500,24 +503,26 @@ body.track .subnav {
 
 .ready-box {
   background: var(--brand-soft);
-  border: 1px solid #bddccf;
-  border-radius: 10px;
-  padding: 12px;
+  border: 1.5px solid var(--brand);
+  border-radius: 18px;
+  padding: 16px;
   margin-top: 12px;
+  box-shadow: 0 4px 16px rgba(199, 242, 58, 0.25);
 }
 
 .ready-box h4 {
   margin: 0 0 6px;
-  font-size: 14px;
-  color: var(--brand);
+  font-size: 15px;
+  font-weight: 900;
+  color: #111827;
 }
 
 .share-preview-row {
   margin-top: 10px;
-  padding: 8px 10px;
+  padding: 9px 12px;
   background: var(--ok-bg);
-  border: 1px solid #b8e2cc;
-  border-radius: 8px;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -745,28 +750,38 @@ body.track .subnav {
     left: 0;
     right: 0;
     border-bottom: 0;
-    border-top: 1px solid var(--line-strong);
-    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.07);
+    border-top: 1px solid var(--line);
+    background: #ffffff;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
     padding-bottom: env(safe-area-inset-bottom, 0px);
     z-index: 90;
   }
 
   .subnav-inner {
-    padding: 0 6px;
-    gap: 2px;
+    padding: 6px;
+    gap: 6px;
   }
 
   .subnav a {
     flex: 1;
-    padding: 11px 6px;
+    padding: 10px 6px;
     font-size: 13px;
     border-bottom: 0;
-    border-top: 3px solid transparent;
+    border-top: 0;
+    border-radius: var(--r-pill);
+    color: var(--mute);
+    transition: background 0.15s, color 0.15s;
   }
 
   .subnav a.on {
-    border-top-color: var(--brand);
-    background: var(--brand-soft);
+    background: #111827;
+    color: #c7f23a;
+    font-weight: 800;
+  }
+
+  /* Bottom sheet mobile feel for cards under map */
+  .home-grid .card {
+    border-radius: 22px;
   }
 
   .dir-switch {
@@ -776,11 +791,12 @@ body.track .subnav {
   .dir-btn {
     flex: 1;
     text-align: center;
-    padding: 7px 12px;
+    padding: 8px 14px;
   }
 
   .map-box {
-    height: 260px;
+    height: 280px;
+    border-radius: 20px;
   }
 
   .chat-list {
