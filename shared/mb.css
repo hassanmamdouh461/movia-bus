@@ -22,7 +22,7 @@
   /* Semantic status colors — accessible, clear */
   --ok: #15803d;
   --ok-bg: #dcfce7;
-  --warn: #ea580c;
+  --warn: #c2410c;
   --warn-bg: #fff7ed;
   --bad: #dc2626;
   --bad-bg: #fee2e2;
@@ -244,12 +244,14 @@ a {
 }
 
 .btn.warn {
-  background: var(--warn);
-  color: #fff;
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1px solid #fed7aa;
 }
 
 .btn.warn:hover:not(:disabled) {
-  background: #c2410c;
+  background: #ffedd5;
+  border-color: #ea580c;
 }
 
 .btn.sm {

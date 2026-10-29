@@ -499,7 +499,7 @@
         '</div>' +
         '<div class="my-trip-acts">' +
           '<button class="btn sec sm" type="button" data-act="toggle-picker">تغيير الميعاد</button>' +
-          '<button class="btn warn sm" type="button" data-act="mark-missed" data-id="' + actGo.id + '">فاتني الميعاد</button>' +
+          '<button class="btn sec sm" type="button" data-act="mark-missed" data-id="' + actGo.id + '">فاتني الميعاد</button>' +
           '<button class="btn sec sm" type="button" data-act="cancel-booking" data-id="' + actGo.id + '">إلغاء</button>' +
         '</div>' +
       '</div>';
