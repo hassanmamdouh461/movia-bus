@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lotus Bus — إزاي السواق بيعرف إن في طالب؟</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap');
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Tajawal, sans-serif; background: #061a38; color: #e8f1ff; min-height: 100vh; }
+  header { padding: 14px 22px 6px; }
+  header h1 { margin: 0; font-size: 24px; font-weight: 900; }
+  header p { margin: 4px 0 0; color: #9fc3f0; font-size: 14px; }
+  main { display: flex; gap: 18px; padding: 10px 22px 22px; align-items: flex-start; flex-wrap: wrap; }
+  .col h3 { margin: 0 0 8px; font-size: 17px; font-weight: 800; }
+  .phone { flex: none; }
+  .frame { width: calc(390px * var(--s) + 20px); height: calc(844px * var(--s) + 20px); padding: 10px; background: #0a1220; border-radius: 40px; border: 2px solid #3a4f78; box-shadow: 0 18px 40px rgba(0,0,0,.45); }
+  .frame .inner { width: 390px; height: 844px; transform: scale(var(--s)); transform-origin: top left; border-radius: 30px; overflow: hidden; background: #fff; }
+  html[dir=rtl] .frame .inner { transform-origin: top right; }
+  iframe { width: 390px; height: 844px; border: 0; display: block; background: #fff; }
+  .panel { flex: 1 1 340px; min-width: 320px; max-width: 560px; }
+  .card { background: rgba(255,255,255,.06); border: 1px solid rgba(143,190,255,.25); border-radius: 16px; padding: 14px 16px; margin-bottom: 12px; }
+  .steps { display: grid; gap: 8px; }
+  button.step { appearance: none; font: inherit; font-weight: 800; font-size: 15px; text-align: start; padding: 11px 14px; border-radius: 12px; border: 1.5px solid #3f67a8; background: #0d2c5c; color: #fff; cursor: pointer; }
+  button.step:hover { background: #124083; }
+  button.step.sec { background: transparent; color: #9fc3f0; }
+  .hint { margin: 10px 0 0; color: #ffd98a; font-weight: 700; font-size: 14px; line-height: 1.7; min-height: 2.4em; }
+  ol#log { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; max-height: 330px; overflow: auto; }
+  ol#log li { display: grid; grid-template-columns: 62px 1fr; gap: 8px; align-items: baseline; font-size: 14px; line-height: 1.6; border-bottom: 1px dashed rgba(143,190,255,.18); padding-bottom: 4px; }
+  ol#log li time { color: #7fb0ff; font-weight: 800; direction: ltr; text-align: right; font-variant-numeric: tabular-nums; }
+  ol#log li.stu b { color: #7ee0a6; } ol#log li.srv b { color: #ffd98a; } ol#log li.drv b { color: #7fc1ff; } ol#log li.act b { color: #ff9bb5; }
+  .legend { font-size: 13px; color: #9fc3f0; margin-top: 8px; }
+</style>
+</head>
+<body style="--s:1">
+<header>
+  <h1>إزاي السواق بيعرف إن في طالب؟</h1>
+  <p>الطالب (يمين) والسواق (شمال) شغّالين لايف على نفس السيرفر. دوس على الخطوات واتفرج، أو جرّب بإيدك جوه أي موبايل. <b>بيانات الصفحة دي معزولة تماماً</b> عن بيانات الديمو الحقيقية، فجرّب براحتك.</p>
+</header>
+<main>
+  <section class="col phone"><h3>🎓 الطالب</h3><div class="frame"><div class="inner"><iframe id="stu" src="/student/?room=how"></iframe></div></div></section>
+  <section class="col phone"><h3>🚌 السواق</h3><div class="frame"><div class="inner"><iframe id="drv" src="/driver/?room=how"></iframe></div></div></section>
+  <aside class="col panel">
+    <div class="card">
+      <h3>الخطوات</h3>
+      <div class="steps">
+        <button class="step sec" id="b0">0 · تجهيز البيانات (إعادة ضبط)</button>
+        <button class="step" id="b1">1 · الطالب يسجّل في الرحلة</button>
+        <button class="step" id="b2">2 · السواق يبدأ الرحلة</button>
+        <button class="step" id="b3">3 · الطالب يضغط Ready</button>
+        <button class="step" id="b4">4 · الطالب يبعت رسالة والسواق يرد</button>
+      </div>
+      <p class="hint" id="hint">ابدأ بالخطوة 0.</p>
+    </div>
+    <div class="card">
+      <h3>اللي بيحصل لحظة بلحظة</h3>
+      <ol id="log"></ol>
+      <div class="legend"><b style="color:#7ee0a6">أخضر</b> الطالب · <b style="color:#ffd98a">أصفر</b> السيرفر · <b style="color:#7fc1ff">أزرق</b> السواق · <b style="color:#ff9bb5">وردي</b> إجراء من الخطوات</div>
+    </div>
+  </aside>
+</main>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const stu = $('stu'), drv = $('drv');
+  const S = () => stu.contentWindow, D = () => drv.contentWindow;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // fit the two phones to the window height
+  function fit() {
+    const wide = innerWidth >= 1250;                                   // wide: the log sits beside the phones; narrow: below them
+    const avail = wide ? innerWidth - 44 - 36 - 360 - 24 : innerWidth - 44 - 18 - 24;
+    const byW = (avail / 2 - 20) / 390, byH = (innerHeight - 110) / 864;
+    document.body.style.setProperty('--s', Math.max(0.5, Math.min(1, byW, byH)).toFixed(3));
+  }
+  addEventListener('resize', fit); fit();
+
+  // ---------- the log ----------
+  let t0 = performance.now();
+  function log(who, text) {
+    const li = document.createElement('li');
+    li.className = who;
+    const label = { stu: 'الطالب', srv: 'السيرفر', drv: 'السواق', act: 'خطوة' }[who];
+    li.innerHTML = '<time>+' + ((performance.now() - t0) / 1000).toFixed(1) + ' ث</time><span><b>' + label + ':</b> ' + text + '</span>';
+    $('log').prepend(li);
+  }
+  const hint = (t) => { $('hint').textContent = t; };
+  const resetClock = () => { t0 = performance.now(); };
+
+  // ---------- helpers on the two pages ----------
+  const click = (win, sel) => { const el = win.document.querySelector(sel); if (el) { el.click(); return true; } return false; };
+  const ready = (w) => w && w.MB && w.MB.state;
+
+  // ---------- watchers: what each side sees, and what the server receives ----------
+  const seen = { stuPk: null, srvT: 0, drvPk: null, drvAlert: false, drvPin: 0, tripStatus: null, chat: new Set(), drvChat: new Set() };
+  let tReady = 0;
+  async function pollServer() {
+    try {
+      const d = await fetch('/api/sync?room=how&since=' + seen.srvT, { cache: 'no-store' }).then((r) => r.json());
+      d.docs.forEach((x) => {
+        seen.srvT = Math.max(seen.srvT, x.t);
+        if (x.d) return;
+        let j; try { j = JSON.parse(x.j); } catch (e) { return; }
+        if (x.k === 'pickups' && !seen.srvPk) { seen.srvPk = x.id; log('srv', 'وصله طلب ركوب جديد (مكان الطالب على الخط: ' + Math.round(j.progress * 100) + '% من المسار) — بيتخزّن في قاعدة البيانات'); }
+        if (x.k === 'trips' && j.id === 't1' && j.status !== seen.tripStatus) { if (seen.tripStatus !== null) log('srv', 'حالة الرحلة اتغيّرت: ' + j.status); seen.tripStatus = j.status; }
+        if (x.k === 'chat' && !seen.chat.has(x.id)) { seen.chat.add(x.id); log('srv', 'وصلته رسالة من ' + (j.from === 'driver' ? 'السواق' : 'الطالب') + ': «' + j.text + '»'); }
+      });
+    } catch (e) {}
+  }
+  function watch() {
+    const s = S(), d = D();
+    if (ready(s)) {
+      const mine = (s.MB.state.pickups || []).find((k) => k.mine);
+      if (mine && seen.stuPk !== mine.id) {
+        seen.stuPk = mine.id; tReady = performance.now(); seen.srvPk = null;
+        log('stu', 'ضغط Ready. الأبليكيشن اتأكد إنه على الخط، وسجّل مكانه (' + mine.lat.toFixed(4) + ' ، ' + mine.lng.toFixed(4) + ')');
+      }
+    }
+    if (ready(d)) {
+      const pks = (d.MB.state.pickups || []);
+      const fresh = pks.find((k) => k.mine && k.id !== seen.drvPk);
+      if (fresh) {
+        seen.drvPk = fresh.id;
+        log('drv', 'وصله الطلب بعد ' + (tReady ? Math.round(performance.now() - tReady) + ' ملّي ثانية' : 'لحظات') + ' من ضغطة الطالب (الصفحة بتسأل السيرفر كل ثانيتين)');
+      }
+      const ban = d.document.getElementById('alertBanner');
+      const showing = ban && !ban.hidden;
+      if (showing && !seen.drvAlert) { log('drv', 'ظهر التنبيه فوق: «' + d.document.getElementById('alertTitle').textContent + '» + صوت + اهتزاز + صوت بيقول «طالب جديد قدامك»'); }
+      seen.drvAlert = showing;
+      const pins = d.document.querySelectorAll('.pin.req').length;
+      if (pins !== seen.drvPin) { if (pins > seen.drvPin) log('drv', 'ظهر الطالب على الخريطة كنقطة رقم ' + pins + '، وعلى الشريط تحت الخريطة، وفي قايمة الطلبات'); seen.drvPin = pins; }
+      const lbl = d.document.querySelector('.bm-lbl');
+      if (lbl && lbl.textContent && lbl.textContent !== seen.lbl) { seen.lbl = lbl.textContent; log('drv', 'كبسولة تحت الباص: «' + lbl.textContent + '»'); }
+      (d.MB.state.chat || []).forEach((m) => { if (m.from !== 'driver' && !seen.drvChat.has(m.id)) { seen.drvChat.add(m.id); log('drv', 'وصلته رسالة الطالب: «' + m.text + '» (عدّاد 💬 على الشريط السفلي)'); } });
+    }
+  }
+  setInterval(() => { try { watch(); } catch (e) {} }, 200);
+  setInterval(pollServer, 500);
+
+  // ---------- the steps ----------
+  async function prepare() {
+    resetClock();
+    log('act', 'بجهّز بيانات العرض (رحلة جاهزة للانطلاق، والطالب لسه ما سجّلش)…');
+    const s = S();
+    s.MB.reset();
+    s.MB.update((st) => {
+      st.trips.forEach((t) => { if (t.id !== 't1') { t.status = 'scheduled'; t.startedAt = null; t.pausedTotal = 0; t.pauseStart = null; } });
+      const t1 = st.trips.find((t) => t.id === 't1');
+      t1.status = 'at_start'; t1.startedAt = null; t1.pausedTotal = 0; t1.pauseStart = null; t1.booked = 18;
+      st.pickups = []; st.chat = []; st.notifications = []; st.sharedLinks = [];
+      st.myBookings.forEach((b) => { b.status = 'cancelled'; });
+      st.me.approachDone = {};
+    });
+    await sleep(3000);
+    Object.assign(seen, { stuPk: null, drvPk: null, drvAlert: false, drvPin: 0, lbl: null, srvPk: null });
+    seen.chat.clear(); seen.drvChat.clear(); tReady = 0;
+    stu.src = '/student/?room=how'; drv.src = '/driver/?room=how';
+    await sleep(3500);
+    hint('اتجهّز. دوس «1 · الطالب يسجّل في الرحلة».');
+    log('act', 'جاهز.');
+  }
+  $('b0').onclick = prepare;
+  $('b1').onclick = async () => {
+    resetClock();
+    if (click(S(), '[data-act=book][data-trip="t1"]')) { log('act', 'الطالب اختار رحلة 07:00 وضغط «سجّل الآن»'); hint('بص عند الطالب: ظهر «✓ مسجّل». دوس 2.'); }
+    else { log('act', 'الطالب مسجّل بالفعل (أو دوس «0» الأول).'); }
+  };
+  $('b2').onclick = () => {
+    resetClock();
+    const b = D().document.getElementById('btnMain');
+    if (b && /ابدأ/.test(b.textContent)) { b.click(); log('act', 'السواق دوس «ابدأ الرحلة». الباص بدأ يتحرك عند الطالب'); hint('بص عند الاتنين: الباص بيتحرك. وجرّب تدوس جوه شاشة السواق مرة عشان الصوت يشتغل. بعدين دوس 3.'); }
+    else { log('act', 'الرحلة بدأت بالفعل.'); }
+  };
+  $('b3').onclick = async () => {
+    resetClock();
+    const s = S();
+    try { Object.defineProperty(s.navigator, 'geolocation', { value: undefined, configurable: true }); } catch (e) {}   // no GPS in a desktop demo: the app falls back to "tap your spot on the line"
+    s.scrollTo(0, 0);
+    log('act', 'الطالب دوس «أنا واقف على الخط — جاهز (Ready)»');
+    if (!click(s, '.eta-action')) { log('act', 'زرار Ready مش ظاهر — سجّل في الرحلة وابدأها الأول (1 و2).'); return; }
+    await sleep(800);
+    if (click(s, '[data-act=ready-demo]')) log('act', 'مفيش GPS في المتصفح، فاخترنا «محاكاة وقوفي على الخط قدّام الباص» — ده بيحصل بالـ GPS الحقيقي في الموبايل');
+    hint('بص عند السواق: بانر فوق ونقطة رقم 1 على الخريطة. ولاحظ إن الباص هيقف لوحده لما يوصل له.');
+  };
+  $('b4').onclick = async () => {
+    resetClock();
+    const s = S();
+    s.location.hash = '#chat';
+    await sleep(700);
+    if (click(s, '.chat-card-wrap .chip')) {
+      log('act', 'الطالب دوس رد سريع: «أنا منتظر في مكاني»');
+      await sleep(1800);
+      if (click(D(), '.qchip')) log('act', 'السواق دوس رد سريع: «أنا في الطريق»');
+      hint('الشات بيفتح بس لما الرحلة تبدأ (الخطوة 2).');
+    } else { log('act', 'الشات لسه مقفول — ابدأ الرحلة الأول (خطوة 2).'); }
+  };
+  log('act', 'جاهز. ابدأ بالخطوة 0.');
+})();
+</script>
+</body>
+</html>

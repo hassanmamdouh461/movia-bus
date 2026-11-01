@@ -4,9 +4,12 @@
    POST /api/sync           -> { ops: [{k, id, j} | {k, id, del:1}], reset?: true }
    Every write gets a new, strictly increasing sequence number `t`; deletes are kept as tombstones (d=1)
    so every device can learn about them. Last write wins per document.
+   ROOMS: ?room=how keeps a completely separate copy of the data (used by the "how it works" page), so playing with it never touches
+   the real demo data. Documents of a room are stored with the collection name prefixed by "<room>~"; the default room has no prefix.
    NOTE: demo-grade — no login yet, anyone who can reach the site can read/write the demo data. */
 
 const COLLECTIONS = new Set(['trips', 'pickups', 'myBookings', 'sharedLinks', 'notifications', 'reports', 'chat', 'policies', '_meta']);
+const ROOMS = new Set(['how']);
 const MAX_OPS = 400;
 const MAX_DOC = 20000;
 const NEXT_T = '(SELECT COALESCE(MAX(t), 0) + 1 FROM docs)';
@@ -33,15 +36,21 @@ export async function onRequest({ request, env }) {
   try {
     await ensureSchema(db);
     const url = new URL(request.url);
+    const room = url.searchParams.get('room') || '';
+    if (room && !ROOMS.has(room)) return json({ error: 'unknown room' }, 400);
+    const pre = room ? room + '~' : '';
+    // which documents belong to this room
+    const inRoom = room ? "k LIKE '" + room + "~%'" : "k NOT LIKE '%~%'";
+    const unpre = (d) => (room ? { ...d, k: d.k.slice(pre.length) } : d);
 
     if (request.method === 'GET') {
       const since = Math.max(0, parseInt(url.searchParams.get('since') || '0', 10) || 0);
       const sql = since === 0
-        ? 'SELECT k, id, j, t, d FROM docs WHERE d = 0 ORDER BY t LIMIT 4000'
-        : 'SELECT k, id, j, t, d FROM docs WHERE t > ?1 ORDER BY t LIMIT 4000';
+        ? 'SELECT k, id, j, t, d FROM docs WHERE d = 0 AND ' + inRoom + ' ORDER BY t LIMIT 4000'
+        : 'SELECT k, id, j, t, d FROM docs WHERE t > ?1 AND ' + inRoom + ' ORDER BY t LIMIT 4000';
       const stmt = since === 0 ? db.prepare(sql) : db.prepare(sql).bind(since);
       const { results } = await stmt.all();
-      return json({ now: Date.now(), docs: results || [] });
+      return json({ now: Date.now(), docs: (results || []).map(unpre) });
     }
 
     if (request.method === 'POST') {
@@ -54,18 +63,18 @@ export async function onRequest({ request, env }) {
 
       const stmts = [];
       if (body.reset === true) {
-        stmts.push(db.prepare(`UPDATE docs SET d = 1, j = '', t = ${NEXT_T} WHERE d = 0`));
+        stmts.push(db.prepare(`UPDATE docs SET d = 1, j = '', t = ${NEXT_T} WHERE d = 0 AND ${inRoom}`));
       }
       for (const o of ops) {
         if (!o || !COLLECTIONS.has(o.k) || typeof o.id !== 'string' || !o.id || o.id.length > 80) return json({ error: 'bad op' }, 400);
         if (o.del) {
-          stmts.push(db.prepare(`UPDATE docs SET d = 1, j = '', t = ${NEXT_T} WHERE k = ?1 AND id = ?2`).bind(o.k, o.id));
+          stmts.push(db.prepare(`UPDATE docs SET d = 1, j = '', t = ${NEXT_T} WHERE k = ?1 AND id = ?2`).bind(pre + o.k, o.id));
         } else {
           if (typeof o.j !== 'string' || o.j.length > MAX_DOC) return json({ error: 'bad doc' }, 400);
           stmts.push(db.prepare(
             `INSERT INTO docs (k, id, j, t, d) VALUES (?1, ?2, ?3, ${NEXT_T}, 0)
              ON CONFLICT (k, id) DO UPDATE SET j = excluded.j, d = 0, t = ${NEXT_T}`
-          ).bind(o.k, o.id, o.j));
+          ).bind(pre + o.k, o.id, o.j));
         }
       }
       if (stmts.length) await db.batch(stmts);

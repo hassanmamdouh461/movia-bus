@@ -6,7 +6,9 @@
    those anonymous pins live as mandatory stops (status 'accepted' from the start). The driver can't skip: the bus
    always pauses at each pickup for a few seconds (boarding) and then continues. */
 (function () {
-  const KEY = 'lotus_state_v2';
+  // ?room=how -> an isolated copy of the data (own local storage key, own server documents); no room = the real demo data
+  const ROOM = (/^[a-z0-9]{1,16}$/.exec(new URLSearchParams(location.search).get('room') || '') || [''])[0];
+  const KEY = 'lotus_state_v2' + (ROOM ? '_' + ROOM : '');
   const TRIP_MS = 8 * 60 * 1000;   // a full trip takes 8 real minutes in the demo
   const BOARD_MS = 8 * 1000;       // how long the bus waits at an accepted pickup
 
@@ -184,7 +186,7 @@
   const allOps = () => Object.keys(sync.shadow).map((key) => { const [k, id] = splitKey(key); return { k, id, j: sync.shadow[key] }; });
 
   async function api(method, qs, body) {
-    const r = await fetch(API + (qs || ''), {
+    const r = await fetch(API + (qs || '') + (ROOM ? (qs ? '&' : '?') + 'room=' + ROOM : ''), {
       method, cache: 'no-store', keepalive: !!body,
       headers: body ? { 'content-type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
@@ -393,6 +395,7 @@
     if (changed) commit();
   }, 1000);
 
+  MB.room = ROOM;
   window.MB = MB;
 })();
 

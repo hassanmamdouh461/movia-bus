@@ -3,7 +3,7 @@
 (function () {
   'use strict';
 
-  const DRIVER_KEY = 'mb_driver_id';
+  const DRIVER_KEY = 'mb_driver_id' + (MB.room ? '_' + MB.room : '');
   const QUICK_REPLIES = ['أنا في الطريق', 'وصلت نقطة الركوب', 'هنتظر دقيقة', 'هتأخر 5 دقائق'];
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
@@ -85,12 +85,12 @@
     return out.sort((a, b) => (b.k.status === 'boarding') - (a.k.status === 'boarding') || a.dist - b.dist);
   }
 
-  let map = null, routeLayer = null, pinLayer = null, linkLayer = null;
+  let map = null, routeLayer = null, pinLayer = null;
   let lastTripId = null, lastPinSig = '', lastReqSig = '', lastChatSig = '';
   let knownPickups = null;
   // map focus: 'auto' keeps the bus and the nearest student in frame (only moves when it has to), 'manual' = the driver moved the map, 'all' = whole route
   let focusMode = 'auto', focusBtns = {}, lastTouchAt = 0;
-  let routeObj = null, routePoly = null, dbus = null, pinMarkers = {}, linkLine = null, linkLbl = null, lastTick = 0;
+  let routeObj = null, routePoly = null, dbus = null, pinMarkers = {}, lastTick = 0;
 
   function initMap() {
     if (typeof L === 'undefined') return;
@@ -98,7 +98,6 @@
     MBMap.addTiles(map, { night: true });
     routeLayer = L.layerGroup().addTo(map);
     pinLayer = L.layerGroup().addTo(map);
-    linkLayer = L.layerGroup().addTo(map);
     const takeOver = () => { lastTouchAt = Date.now(); if (focusMode === 'auto') { focusMode = 'manual'; updateFocusBtn(); } };
     map.on('dragstart drag', takeOver);
     // route end labels fade out when zoomed in close
@@ -177,7 +176,7 @@
     routeLayer.clearLayers();
     if (routeObj) routeObj.destroy();
     if (dbus) { dbus.remove(); dbus = null; }
-    pinMarkers = {}; linkLine = null; linkLbl = null; linkLayer.clearLayers();
+    pinMarkers = {};
     const route = MB.R[trip.routeId];
     routePoly = MB.polyOf(trip);
     routeObj = MBMap.route(map, routePoly, route.color);
@@ -221,7 +220,7 @@
     });
   }
 
-  /* ---- the bus: glides (position is drawn every animation frame from the clock), with a trail and a line to the nearest student ---- */
+  /* ---- the bus: glides (position is drawn every animation frame from the clock), with a trail ---- */
   function busLabelFor(trip) {
     const reqs = aheadRequests(trip);
     if (reqs.some((r) => r.k.status === 'boarding')) return 'واقف للركوب';
@@ -237,7 +236,6 @@
       if (dbus) { dbus.remove(); dbus = null; }
       routeObj.done.setLatLngs([]);
       routeObj.line.setLatLngs(routePoly);
-      if (linkLine) { linkLayer.clearLayers(); linkLine = linkLbl = null; }
       return;
     }
     const ll = [pos.lat, pos.lng];
@@ -252,29 +250,11 @@
     routeObj.done.setLatLngs(routePoly.slice(0, i + 1).concat([ll]));
     routeObj.line.setLatLngs([ll].concat(routePoly.slice(i + 1)));
     dbus.label(busLabelFor(trip));
-    // dotted line along the road from the bus to the nearest student, with the distance; a ring on a student the bus is about to reach
-    const reqs = aheadRequests(trip);
-    const nearest = reqs.find((r) => r.k.status !== 'boarding');
-    reqs.forEach((r) => {
+    // a ring on a student the bus is about to reach (less than 100 m)
+    aheadRequests(trip).forEach((r) => {
       const m = pinMarkers[r.k.id], el = m && m.getElement(), pin = el && el.querySelector('.pin');
       if (pin) pin.classList.toggle('alert', r.k.status !== 'boarding' && r.dist <= 100);
     });
-    if (!nearest) {
-      if (linkLine) { linkLayer.clearLayers(); linkLine = linkLbl = null; }
-      return;
-    }
-    const pts = MBMap.sliceBetween(routePoly, pos.progress, nearest.k.progress);
-    pts[0] = ll;
-    const mid = pts[Math.floor(pts.length / 2)];
-    const icon = L.divIcon({ className: 'mb-icon', html: '<div class="link-lbl">' + esc(fmtDist(nearest.dist)) + '</div>', iconSize: [0, 0] });
-    if (!linkLine) {
-      linkLine = L.polyline(pts, { color: '#fff', weight: 4, dashArray: '1 10', lineCap: 'round', opacity: 1, interactive: false }).addTo(linkLayer);
-      linkLbl = L.marker(mid, { icon, interactive: false, zIndexOffset: 700 }).addTo(linkLayer);
-    } else {
-      linkLine.setLatLngs(pts);
-      linkLbl.setLatLng(mid);
-      linkLbl.setIcon(icon);
-    }
   }
 
   function driverFrame() {

@@ -552,7 +552,7 @@ body {
   align-self: center;
 }
 
-/* ---- map pins: students (numbered, 1 = nearest), route terminals, the dotted link to the nearest ---- */
+/* ---- map pins: students (numbered, 1 = nearest) and route terminals ---- */
 .pin.req {
   width: 26px;
   min-width: 0;
@@ -581,21 +581,6 @@ body {
 @keyframes pinRing {
   from { transform: scale(0.6); opacity: 1; }
   to { transform: scale(1.5); opacity: 0; }
-}
-
-.link-lbl {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform: translate(-50%, -50%);
-  white-space: nowrap;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1.5px solid var(--ok);
-  color: var(--ok);
-  font-size: 11.5px;
-  font-weight: 800;
 }
 
 /* route end labels: small and light, gone when zoomed in close */
