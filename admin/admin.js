@@ -374,12 +374,27 @@
   // ---------- 3.4 live monitor ----------
   let map = null;
   let markers = {};
+  let heatLayer = null;
+  let heatOn = false;
+  let heatRange = 'live';
+  let heatSig = '';
 
   function renderMonitor() {
     map = null;
     markers = {};
+    heatLayer = null;
+    heatSig = '';
     return head('المتابعة الحية وجدول اليوم', '<span class="live-pill"><i></i>مباشر</span>') +
+      '<div class="row map-bar no-print">' +
+        '<button class="btn sm ' + (heatOn ? '' : 'sec') + '" type="button" data-act="heatToggle" id="heatBtn">كثافة طلبات Ready على الخريطة</button>' +
+        '<select id="heatRange" data-chg="heatRange" aria-label="فترة البيانات"' + (heatOn ? '' : ' hidden') + '>' +
+          '<option value="live"' + (heatRange === 'live' ? ' selected' : '') + '>اليوم (مباشر)</option>' +
+          '<option value="week"' + (heatRange === 'week' ? ' selected' : '') + '>آخر 7 أيام (عيّنة تجريبية)</option>' +
+        '</select>' +
+        '<span id="fleetLegend" class="fleet-legend grow"></span>' +
+      '</div>' +
       '<div id="liveMap" class="map live"></div>' +
+      '<div id="heatInfo" class="card heat-info" hidden></div>' +
       '<div class="card">' +
         '<div class="row" style="justify-content:space-between;margin-bottom:10px;flex-wrap:wrap">' +
           '<h3 style="margin:0">الحافلات الجارية وطلبات الركوب (Ready)</h3>' +
@@ -409,6 +424,8 @@
       L.circleMarker(b, { radius: 6, color: r.color, weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('نهاية: ' + esc(r.toName || '')).addTo(map);
     });
     if (pts.length) map.fitBounds(pts, { padding: [24, 24] });
+    heatLayer = L.layerGroup().addTo(map);
+    drawHeat(true);
     setTimeout(() => map && map.invalidateSize(), 60);
   }
 
@@ -441,22 +458,149 @@
         chip('ok', 'تم الركوب', cnt.boarded) + chip('', 'فاتهم الباص', cnt.passed);
     }
 
-    if (map && window.L) {
-      const seen = new Set();
-      en.forEach((t) => {
-        const p = MB.position(t);
+    paintFleet();
+    drawHeat(false);
+  }
+
+  // ---------- fleet map: bus colour by status + Ready-request density ----------
+  const ST = {
+    run: { key: 'run', label: 'في الطريق', color: '#15803d' },
+    board: { key: 'board', label: 'واقف للركوب', color: '#ea580c' },
+    late: { key: 'late', label: 'متأخر', color: '#dc2626' },
+    ready: { key: 'ready', label: 'جاهز للانطلاق', color: '#2b6cb0' },
+  };
+  const LATE_AFTER_MIN = 5;      // started / still waiting more than 5 minutes after its slot...
+  const LATE_IGNORE_MIN = 120;   // ...but a trip that is hours off its slot is just a demo run started at an arbitrary time
+
+  function busState(t, p) {
+    const ref = t.startedAt || Date.now();
+    const lateMin = (ref - t.scheduledAt) / 60000;
+    const late = lateMin > LATE_AFTER_MIN && lateMin <= LATE_IGNORE_MIN;
+    if (t.status === 'at_start') return late ? ST.late : ST.ready;
+    if (p && p.paused) return ST.board;
+    return late ? ST.late : ST.run;
+  }
+
+  function paintFleet() {
+    if (!map || !window.L) return;
+    const counts = { run: 0, board: 0, late: 0, ready: 0 };
+    const seen = new Set();
+    MB.state.trips.filter((x) => x.published !== false && (x.status === 'en_route' || x.status === 'at_start')).forEach((t) => {
+      let ll, p = null;
+      if (t.status === 'en_route') {
+        p = MB.position(t);
         if (!p) return;
-        seen.add(t.id);
-        const ll = [p.lat, p.lng];
-        if (markers[t.id]) markers[t.id].setLatLng(ll);
-        else {
-          markers[t.id] = L.marker(ll, { icon: L.divIcon({ className: 'adm-busicon', html: '<div class="pin bus">' + esc(busNo(t)) + '</div>', iconSize: [34, 34], iconAnchor: [17, 17] }) })
-            .bindTooltip(esc(titleOf(t)))
-            .addTo(map);
+        ll = [p.lat, p.lng];
+      } else {
+        const poly = MB.polyOf(t);
+        ll = poly[0];
+      }
+      const st = busState(t, p);
+      counts[st.key]++;
+      seen.add(t.id);
+      const html = '<div class="pin bus st-' + st.key + '">' + esc(busNo(t)) + '</div>';
+      const tip = esc(titleOf(t)) + ' — ' + esc(st.label);
+      let m = markers[t.id];
+      if (!m) {
+        m = markers[t.id] = L.marker(ll, { icon: L.divIcon({ className: 'adm-busicon', html, iconSize: [34, 34], iconAnchor: [17, 17] }), zIndexOffset: 500 })
+          .bindTooltip(tip).addTo(map);
+        m._st = st.key;
+      } else {
+        m.setLatLng(ll);
+        if (m._st !== st.key) { m._st = st.key; m.setIcon(L.divIcon({ className: 'adm-busicon', html, iconSize: [34, 34], iconAnchor: [17, 17] })); }
+        m.setTooltipContent(tip);
+      }
+    });
+    Object.keys(markers).forEach((id) => { if (!seen.has(id)) { markers[id].remove(); delete markers[id]; } });
+    const lg = $('#fleetLegend');
+    if (lg) {
+      lg.innerHTML = Object.keys(ST).map((k) => '<span class="lg-i"><i style="background:' + ST[k].color + '"></i>' + esc(ST[k].label) + ' <b>' + counts[k] + '</b></span>').join('');
+    }
+  }
+
+  // a deterministic week of past Ready requests, clustered around a few busy spots per line (shown only as a labelled demo sample)
+  let sampleCache = null;
+  function pointAlong(poly, p) {
+    const f = Math.max(0, Math.min(1, p)) * (poly.length - 1);
+    const i = Math.min(poly.length - 2, Math.floor(f)), k = f - i;
+    return [poly[i][0] + (poly[i + 1][0] - poly[i][0]) * k, poly[i][1] + (poly[i + 1][1] - poly[i][1]) * k];
+  }
+  function sampleHistory() {
+    if (sampleCache) return sampleCache;
+    let seed = 20260101;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const spots = [[0.16, 44], [0.47, 31], [0.74, 52]];
+    const out = [];
+    (MB.routes || []).forEach((r, ri) => {
+      spots.forEach(([prog, n], si) => {
+        const count = Math.round(n * (ri % 2 ? 0.8 : 1) * (0.9 + rnd() * 0.2));
+        for (let i = 0; i < count; i++) {
+          const p = prog + (rnd() + rnd() + rnd() - 1.5) * 0.03;
+          const pt = pointAlong(r.polyline, p);
+          out.push({ lat: pt[0] + (rnd() - 0.5) * 0.0012, lng: pt[1] + (rnd() - 0.5) * 0.0012, routeId: r.id });
         }
       });
-      Object.keys(markers).forEach((id) => { if (!seen.has(id)) { markers[id].remove(); delete markers[id]; } });
+    });
+    sampleCache = out;
+    return out;
+  }
+
+  function heatPoints() {
+    const live = (MB.state.pickups || []).filter((k) => k && typeof k.lat === 'number').map((k) => {
+      const tr = MB.trip(k.tripId);
+      return { lat: k.lat, lng: k.lng, routeId: tr ? tr.routeId : null };
+    });
+    return heatRange === 'week' ? sampleHistory().concat(live) : live;
+  }
+
+  function drawHeat(force) {
+    if (!map || !heatLayer || !window.L) return;
+    const pts = heatOn ? heatPoints() : [];
+    const sig = heatOn + '|' + heatRange + '|' + pts.length;
+    if (!force && sig === heatSig) return;
+    heatSig = sig;
+    heatLayer.clearLayers();
+    const info = $('#heatInfo');
+    if (!heatOn) { if (info) info.hidden = true; return; }
+
+    const CELL = 0.0016;   // about 170 m
+    const bins = {};
+    pts.forEach((q) => {
+      const key = Math.round(q.lat / CELL) + ',' + Math.round(q.lng / CELL);
+      const b = bins[key] || (bins[key] = { n: 0, lat: 0, lng: 0, routes: {} });
+      b.n++; b.lat += q.lat; b.lng += q.lng;
+      if (q.routeId) b.routes[q.routeId] = (b.routes[q.routeId] || 0) + 1;
+    });
+    const list = Object.keys(bins).map((k) => { const b = bins[k]; return { n: b.n, lat: b.lat / b.n, lng: b.lng / b.n, routes: b.routes }; })
+      .sort((a, b) => b.n - a.n);
+    const max = list.length ? list[0].n : 1;
+    list.forEach((b) => {
+      const k = b.n / max;
+      L.circle([b.lat, b.lng], {
+        radius: 130 + 230 * Math.sqrt(k), stroke: false, interactive: false,
+        fillColor: k > 0.66 ? '#dc2626' : k > 0.33 ? '#ea580c' : '#f59e0b', fillOpacity: 0.16 + 0.34 * k,
+      }).addTo(heatLayer);
+    });
+
+    const tops = list.slice(0, 3);
+    tops.forEach((b, i) => {
+      L.marker([b.lat, b.lng], { icon: L.divIcon({ className: 'adm-busicon', html: '<div class="hot-rank">' + (i + 1) + '</div>', iconSize: [24, 24], iconAnchor: [12, 12] }), zIndexOffset: 300 })
+        .bindTooltip(b.n + ' طلب Ready').addTo(heatLayer);
+    });
+
+    if (!info) return;
+    info.hidden = false;
+    if (!pts.length) {
+      info.innerHTML = '<span class="mute">لا توجد طلبات Ready اليوم بعد — اختر «آخر 7 أيام» لعرض عيّنة تجريبية من البيانات التاريخية.</span>';
+      return;
     }
+    const chips = tops.map((b, i) => {
+      const rid = Object.keys(b.routes).sort((x, y) => b.routes[y] - b.routes[x])[0];
+      const where = rid && MB.R[rid] ? esc(MB.R[rid].name) + ' عند ' + Math.round(MB.snap({ routeId: rid, direction: 'go' }, b.lat, b.lng).progress * 100) + '% من المسار' : 'نقطة على الخريطة';
+      return '<button class="btn sm sec" type="button" data-act="heatGo" data-lat="' + b.lat + '" data-lng="' + b.lng + '"><span class="hot-rank sm">' + (i + 1) + '</span> ' + where + ' · ' + b.n + ' طلب</button>';
+    }).join('');
+    info.innerHTML = '<div class="row" style="gap:8px;flex-wrap:wrap"><b>أكثر النقاط طلباً:</b>' + chips + '</div>' +
+      '<div class="adm-note">' + (heatRange === 'week' ? 'عيّنة تجريبية مولّدة للعرض (مضافاً إليها الطلبات الحالية) — تساعد في اختيار أماكن توقف مقترحة.' : 'الطلبات المسجّلة اليوم فقط.') + '</div>';
   }
 
   // ---------- 3.6 reports ----------
@@ -616,6 +760,14 @@
 
   // ---------- actions (delegated) ----------
   const ACTIONS = {
+    heatToggle: () => {
+      heatOn = !heatOn;
+      const btn = $('#heatBtn'), sel = $('#heatRange');
+      if (btn) btn.classList.toggle('sec', !heatOn);
+      if (sel) sel.hidden = !heatOn;
+      drawHeat(true);
+    },
+    heatGo: (d) => { if (map) map.flyTo([+d.lat, +d.lng], 16, { duration: 0.9 }); },
     // back to the starting demo data on every device (bookings, Ready requests, chat, notifications...)
     demoReset: () => {
       if (!window.confirm('إعادة ضبط بيانات العرض التجريبي؟\nسيتم مسح كل الحجوزات وطلبات Ready والمحادثات والإشعارات على كل الأجهزة، والرجوع لبيانات البداية.')) return;
@@ -666,6 +818,7 @@
   };
 
   const CHANGES = {
+    heatRange: (v) => { heatRange = v === 'week' ? 'week' : 'live'; drawHeat(true); },
     pubTime: (v, d) => { if (draft[+d.i]) draft[+d.i].time = v; },
     pubDriver: (v, d) => { if (draft[+d.i]) draft[+d.i].driverId = v; },
     tripDay: (v) => { if (v) { tripDay = v; refreshOpsPanel(); } },

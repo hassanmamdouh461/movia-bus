@@ -29,7 +29,11 @@
     chat: {},
     report: { cat: REPORT_CATS[0], trip: '', text: '' },
     mapTrip: null,
+    myLoc: null,        // my live position {lat,lng} (blue dot), once the student allows location
+    follow: false,      // map keeps the bus centred
+    wantMe: false,      // fly to my position as soon as the first fix arrives
   };
+  const geo = { watch: null };
   let mapCtl = null;
   let pending = false;
 
@@ -777,6 +781,7 @@
 
   // ---------- Map Mounting ----------
   function destroyMap() {
+    if (mapCtl && mapCtl.raf) cancelAnimationFrame(mapCtl.raf);
     if (mapCtl && mapCtl.map) mapCtl.map.remove();
     mapCtl = null;
   }
@@ -792,7 +797,8 @@
     const map = L.map(el, { scrollWheelZoom: false }).setView([28.11, 30.80], 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
     el.classList.toggle('picking', draft.pickMode === tid);
-    const line = L.polyline(poly, { color: route.color, weight: 5, opacity: 0.9 }).addTo(map);
+    const done = L.polyline([], { color: '#94a3b8', weight: 5, opacity: 0.9, interactive: false }).addTo(map);   // part the bus already drove
+    const line = L.polyline(poly, { color: route.color, weight: 5, opacity: 0.9 }).addTo(map);                    // part still ahead
     // route ends only: start and finish markers
     L.marker(poly[0], {
       icon: L.divIcon({ className: '', html: '<div class="pin">من</div>', iconSize: [26, 26], iconAnchor: [13, 13] }),
@@ -833,6 +839,7 @@
           b.textContent = focusing ? 'عرض المسار كله' : 'ركّز على مكاني';
           L.DomEvent.disableClickPropagation(b);
           L.DomEvent.on(b, 'click', () => {
+            draft.follow = false;
             draft.focusPk = !focusing;
             draft.flyPk = !focusing;
             render();
@@ -842,32 +849,209 @@
       });
       new Ctl().addTo(map);
     }
-    mapCtl = { tripId: tid, map, bus: null, line };
-    tickMap();
+    mapCtl = { tripId: tid, map, bus: null, line, done, poly, me: null, meLine: null, meLbl: null, hd: 0, lastLbl: '', lastTrail: 0, followReady: false, tools: {} };
+    addMapTools(map);
+    map.on('dragstart', () => { if (draft.follow) { draft.follow = false; syncToolState(); } });
+    paintMyLoc();
+    paintBus();
+    if (draft.follow && mapCtl.bus) {
+      map.setView(mapCtl.bus.getLatLng(), 16, { animate: false });
+      mapCtl.followReady = true;
+    } else {
+      draft.follow = false;
+    }
+    syncToolState();
+    mapCtl.raf = requestAnimationFrame(frame);
     setTimeout(() => map.invalidateSize(), 50);
   }
 
-  function tickMap() {
-    if (!mapCtl || !mapCtl.map || !window.L) return;
-    const t = trip(mapCtl.tripId);
+  // ---------- my location: blue dot + dashed line to the nearest point of the route ----------
+  function fmtDist(m) {
+    if (m < 950) return Math.max(10, Math.round(m / 10) * 10) + ' م';
+    return (m / 1000).toFixed(m < 10000 ? 1 : 0) + ' كم';
+  }
+
+  function startGeo() {
+    if (geo.watch != null || !navigator.geolocation) return;
+    geo.watch = navigator.geolocation.watchPosition(
+      (p) => {
+        draft.myLoc = { lat: p.coords.latitude, lng: p.coords.longitude };
+        paintMyLoc();
+        if (draft.wantMe && mapCtl && mapCtl.map) { draft.wantMe = false; mapCtl.map.flyTo([draft.myLoc.lat, draft.myLoc.lng], 16, { duration: 1 }); }
+      },
+      () => {
+        if (geo.watch != null) navigator.geolocation.clearWatch(geo.watch);
+        geo.watch = null;
+        draft.wantMe = false;
+        toast('مش قادر أحدد موقعك — فعّل إذن الموقع للموقع/الأبليكيشن من إعدادات الجهاز');
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    );
+  }
+  // already allowed before: show the blue dot without asking again
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'geolocation' }).then((r) => { if (r.state === 'granted') startGeo(); }).catch(() => {});
+  }
+
+  function paintMyLoc() {
+    const c = mapCtl, loc = draft.myLoc;
+    if (!c || !c.map || !window.L || !loc) return;
+    const L = window.L, t = trip(c.tripId);
     if (!t) return;
-    const pos = MB.position(t);
-    if (pos) {
-      if (!mapCtl.bus) {
-        mapCtl.bus = window.L.marker([pos.lat, pos.lng], {
-          icon: window.L.divIcon({
-            className: 'mb-bus',
-            html: '<div class="bus-pill">الحافلة</div>',
-            iconSize: [64, 28],
-            iconAnchor: [32, 14],
-          }),
-          zIndexOffset: 1000,
-        }).addTo(mapCtl.map);
-      } else {
-        mapCtl.bus.setLatLng([pos.lat, pos.lng]);
-      }
+    const sn = MB.snap(t, loc.lat, loc.lng);
+    const near = sn.distM <= 250;
+    const me = [loc.lat, loc.lng], onLine = [sn.lat, sn.lng];
+    const mid = [(me[0] + onLine[0]) / 2, (me[1] + onLine[1]) / 2];
+    const lbl = '<div class="me-lbl' + (near ? ' ok' : '') + '">' + (near ? 'على الخط ✓' : fmtDist(sn.distM) + ' عن الخط') + '</div>';
+    if (!c.me) {
+      c.me = L.marker(me, { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 900, interactive: false }).addTo(c.map);
+      c.meLine = L.polyline([me, onLine], { color: near ? '#15803d' : '#2b90d9', weight: 3, dashArray: '6 8', opacity: 0.95, interactive: false }).addTo(c.map);
+      c.meLbl = L.marker(mid, { icon: L.divIcon({ className: 'me-lbl-wrap', html: lbl, iconSize: [0, 0] }), zIndexOffset: 700, interactive: false }).addTo(c.map);
+    } else {
+      c.me.setLatLng(me);
+      c.meLine.setLatLngs([me, onLine]);
+      c.meLine.setStyle({ color: near ? '#15803d' : '#2b90d9' });
+      c.meLbl.setLatLng(mid);
+      c.meLbl.setIcon(L.divIcon({ className: 'me-lbl-wrap', html: lbl, iconSize: [0, 0] }));
     }
   }
+
+  // ---------- map buttons: follow the bus / go to my position ----------
+  function addMapTools(map) {
+    const L = window.L;
+    const Ctl = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd() {
+        const box = L.DomUtil.create('div', 'map-tools');
+        const mk = (key, text, fn) => {
+          const b = L.DomUtil.create('button', 'btn sm map-focus-btn map-tool', box);
+          b.type = 'button';
+          b.textContent = text;
+          mapCtl.tools[key] = b;
+          L.DomEvent.disableClickPropagation(b);
+          L.DomEvent.on(b, 'click', fn);
+        };
+        mk('bus', 'تتبّع الباص', () => {
+          if (!mapCtl.bus) return toast('الباص لسه ما اتحركش');
+          draft.follow = !draft.follow;
+          draft.focusPk = false;
+          if (draft.follow) {
+            mapCtl.followReady = false;
+            map.once('moveend', () => { if (mapCtl) mapCtl.followReady = true; });
+            map.flyTo(mapCtl.bus.getLatLng(), 16, { duration: 0.8 });
+          }
+          syncToolState();
+        });
+        mk('me', 'موقعي', () => {
+          draft.follow = false;
+          syncToolState();
+          if (draft.myLoc) return map.flyTo([draft.myLoc.lat, draft.myLoc.lng], 16, { duration: 0.8 });
+          if (!navigator.geolocation) return toast('جهازك مش بيدعم تحديد الموقع');
+          draft.wantMe = true;
+          toast('جاري تحديد موقعك…');
+          startGeo();
+        });
+        return box;
+      },
+    });
+    new Ctl().addTo(map);
+  }
+  function syncToolState() {
+    if (mapCtl && mapCtl.tools.bus) mapCtl.tools.bus.classList.toggle('on', !!draft.follow);
+  }
+
+  // point of a path at progress p (0..1)
+  function pointAt(poly, p) {
+    const f = Math.max(0, Math.min(1, p)) * (poly.length - 1);
+    const i = Math.min(poly.length - 2, Math.floor(f)), k = f - i;
+    return [poly[i][0] + (poly[i + 1][0] - poly[i][0]) * k, poly[i][1] + (poly[i + 1][1] - poly[i][1]) * k];
+  }
+  // direction of travel in degrees (0 = north), measured over a short stretch so tiny zig-zags don't make the arrow jitter
+  function headingAt(poly, p) {
+    const a = pointAt(poly, p - 0.012), b = pointAt(poly, p + 0.012);
+    const dy = (b[0] - a[0]) * 111000, dx = (b[1] - a[1]) * 98000;
+    if (Math.abs(dx) + Math.abs(dy) < 1) return null;
+    return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  }
+
+  // text in the capsule under the bus
+  function busLabel(t, pos) {
+    if (pos.paused) return 'واقف للركوب';
+    const mins = (m) => (m <= 1 ? 'أقل من دقيقة' : m + ' د');
+    const pk = myPk(MB.state, t.id);
+    if (pk && pk.status === 'boarding') return 'وصلت — اركب';
+    if (pk && (pk.status === 'waiting' || pk.status === 'accepted')) {
+      const m = MB.etaToPickup(t, pk);
+      if (m !== null) return 'هتوصلك بعد ' + mins(m);
+    }
+    const loc = draft.myLoc;
+    if (loc) {
+      const sn = MB.snap(t, loc.lat, loc.lng);
+      if (sn.distM <= 250 && sn.progress >= pos.progress - 0.005) {
+        const m = MB.etaToProgress(t, sn.progress);
+        if (m !== null) return 'عندك بعد ' + mins(m);
+      }
+    }
+    const end = MB.etaToProgress(t, 1);
+    return end === null ? 'الحافلة' : 'الوصول بعد ' + mins(end);
+  }
+
+  const BUS_ARROW = '<svg class="bus-arrow" viewBox="0 0 24 24" width="20" height="20"><path d="M12 2.5 20 21l-8-4.2L4 21z" fill="#fff"/></svg>';
+
+  // runs every animation frame: the position is a pure function of the clock, so the bus glides instead of jumping
+  function paintBus() {
+    const c = mapCtl;
+    if (!c || !c.map || !window.L) return;
+    const t = trip(c.tripId);
+    if (!t) return;
+    const pos = MB.position(t);
+    if (!pos) {
+      if (c.bus) { c.bus.remove(); c.bus = null; c.lastLbl = ''; }
+      if (c.lastTrail !== -1) { c.done.setLatLngs([]); c.line.setLatLngs(c.poly); c.lastTrail = -1; }
+      return;
+    }
+    const ll = [pos.lat, pos.lng];
+    const hd = headingAt(c.poly, pos.progress);
+    if (!c.bus) {
+      c.bus = window.L.marker(ll, {
+        icon: window.L.divIcon({
+          className: 'mb-bus',
+          html: '<div class="bus-dot">' + BUS_ARROW + '</div><div class="bus-lbl"></div>',
+          iconSize: [0, 0],
+        }),
+        zIndexOffset: 1000,
+        interactive: false,
+      }).addTo(c.map);
+    } else {
+      c.bus.setLatLng(ll);
+    }
+    const el = c.bus.getElement();
+    if (el) {
+      if (hd !== null) {
+        // shortest turn, so the arrow never spins the long way round
+        c.hd += ((hd - c.hd + 540) % 360) - 180;
+        const ar = el.querySelector('.bus-arrow');
+        if (ar) ar.style.transform = 'rotate(' + c.hd.toFixed(1) + 'deg)';
+      }
+      const txt = busLabel(t, pos);
+      if (txt !== c.lastLbl) { c.lastLbl = txt; const l = el.querySelector('.bus-lbl'); if (l) l.textContent = txt; }
+    }
+    if (draft.follow && c.followReady) c.map.panTo(ll, { animate: false });
+    // progress trail: grey behind the bus, route colour ahead (redrawn a few times per second only)
+    const nowMs = performance.now();
+    if (c.lastTrail === -1 || nowMs - c.lastTrail > 250) {
+      c.lastTrail = nowMs;
+      const i = Math.min(c.poly.length - 2, Math.floor(pos.progress * (c.poly.length - 1)));
+      c.done.setLatLngs(c.poly.slice(0, i + 1).concat([ll]));
+      c.line.setLatLngs([ll].concat(c.poly.slice(i + 1)));
+    }
+  }
+  function frame() {
+    if (!mapCtl || !mapCtl.map) return;
+    mapCtl.raf = requestAnimationFrame(frame);
+    paintBus();
+  }
+  function tickMap() { paintBus(); paintMyLoc(); }
 
   function parseRoute() {
     const h = location.hash.replace(/^#/, '');
