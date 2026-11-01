@@ -282,6 +282,7 @@
     draft.mapTrip = tid;
     draft.showPicker = false;
     toast(switched ? 'تم تبديل الميعاد ✓' : 'تم التسجيل ✓');
+    render();
   }
 
   function cancelBooking(id) {
@@ -296,6 +297,7 @@
     });
     draft.showPicker = true;
     toast('تم إلغاء التسجيل — اختر موعداً آخر');
+    render();
   }
 
   function markMissed(id) {
@@ -310,6 +312,7 @@
     });
     draft.showPicker = true;
     toast('فاتتك الرحلة');
+    render();
   }
 
   // Ready: student MUST be on/near the route line (within 250m) and ahead of the bus, and press Ready themselves.
