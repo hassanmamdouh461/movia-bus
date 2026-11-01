@@ -29,8 +29,16 @@
   </div>
   <div class="row topbar-actions">
     <select id="driverSel" class="drv-sel" aria-label="اختيار السائق"></select>
+    <button class="icon-btn" id="settingsBtn" type="button" aria-label="الإعدادات" aria-expanded="false" aria-controls="settingsSheet">⚙️</button>
   </div>
 </header>
+
+<div class="settings-sheet" id="settingsSheet" hidden>
+  <button class="set-row" id="alertToggle" type="button" aria-pressed="true">🔔 تنبيهات الطلاب الجديدة: تشغيل</button>
+  <button class="set-row" id="drivingToggle" type="button" aria-pressed="false">🚗 وضع القيادة: إيقاف</button>
+  <button class="set-row" id="alertTest" type="button">🔊 اختبار التنبيه</button>
+  <button class="set-row" id="reopenBtn" type="button">↺ إعادة فتح جدول اليوم (للتجربة)</button>
+</div>
 
 <div class="alert-banner" id="alertBanner" role="alert" aria-live="assertive" hidden>
   <strong class="alert-title" id="alertTitle"></strong>
@@ -39,76 +47,71 @@
   <span class="alert-close">اضغط للإغلاق</span>
 </div>
 
-<main class="wrap">
-  <div class="alert-bar">
-    <button class="alert-toggle" id="alertToggle" type="button" aria-pressed="true">🔔 التنبيهات: تشغيل</button>
-    <button class="alert-test" id="alertTest" type="button">اختبار التنبيه</button>
-    <span class="audio-hint" id="audioHint">اضغط في أي مكان لتفعيل الصوت</span>
-  </div>
+<main class="wrap drv">
+  <!-- Driving card: trip line, status, map with the nearest student on it, progress strip -->
+  <section class="card drv-card">
+    <button class="trip-line" id="tripLine" type="button" aria-expanded="false" aria-controls="drvSchedule">
+      <span class="grow">
+        <b id="tripTitle">جاري التحميل…</b>
+        <small id="tripMeta"></small>
+      </span>
+      <span class="caret" aria-hidden="true">▾</span>
+    </button>
+    <div class="drv-sched-box" id="drvSchedule" aria-label="جدول السائق اليومي المعتمد من الإدارة" hidden></div>
 
-  <div class="drv-grid">
-    <!-- Primary Column: Unified Driving Mode Card (Trip Header + Live Map + Next Request + Primary Action) -->
-    <div class="drv-col">
-      <section class="card m-order-1" style="padding:12px">
-        <div class="row drv-trip-head" style="margin-bottom:10px">
-          <div class="grow">
-            <h2 id="tripTitle" style="margin:0 0 2px;font-size:18px">جاري التحميل…</h2>
-            <p class="mute" id="tripMeta" style="margin:0"></p>
-          </div>
-          <span class="badge info" id="schedBadge">جدول إلزامي من الإدارة 🔒</span>
-        </div>
-
-        <div class="drv-sched-box" id="drvSchedule" aria-label="جدول السائق اليومي المعتمد من الإدارة"></div>
-
-        <div class="map drv-map" id="map"></div>
-
-        <ol class="chain" id="chain"></ol>
-
-        <div class="next-card" id="nextCard" style="margin-bottom:10px">
-          <div class="grow">
-            <span class="mute" id="nextLabel">أقرب طلب ركوب</span>
-            <strong class="next-name" id="nextName">—</strong>
-            <span class="badge info" id="nextWait" style="margin-top:4px"></span>
-          </div>
-          <div class="eta-box">
-            <span class="eta-num" id="etaNum">—</span>
-            <span class="mute" id="etaUnit"></span>
-          </div>
-        </div>
-
-        <button class="btn big go-btn" id="btnMain" type="button">ابدأ الرحلة</button>
-        <p class="mute hint" id="hint" style="margin:6px 0 0"></p>
-      </section>
+    <div class="status-banner" id="statusBanner" data-tone="grey">
+      <b id="statusMain">—</b>
+      <span id="statusSub"></span>
     </div>
 
-    <!-- Secondary Column: Ready Requests List + Quick-Reply Chat -->
-    <div class="drv-col">
-      <section class="card m-order-2">
-        <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <h3 style="margin:0">طلبات الركوب على المسار</h3>
-          <span class="badge info" id="reqCount">0</span>
+    <div class="map-wrap">
+      <div class="map drv-map" id="map"></div>
+      <div class="map-next" id="nextCard" hidden>
+        <div class="mn-text">
+          <span class="mute" id="nextLabel">أقرب طالب</span>
+          <strong class="next-name" id="nextName">—</strong>
+          <span class="badge info" id="nextWait"></span>
         </div>
-        <div id="reqList" class="req-list"></div>
-      </section>
-
-      <section class="card m-order-3">
-        <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <h3 style="margin:0">رد سريع وشات الرحلة</h3>
-          <span class="badge info" id="chatSub"></span>
+        <div class="eta-box">
+          <span class="eta-num" id="etaNum">—</span>
+          <span class="mute" id="etaUnit"></span>
         </div>
-        <div class="quick-row" id="quick"></div>
-        <div class="msg-list" id="chatList"></div>
-        <div class="chat-input">
-          <input id="chatIn" type="text" maxlength="200" placeholder="أو اكتب رسالة مخصصة للطلاب..." autocomplete="off">
-          <button class="btn" id="chatSend" type="button">إرسال</button>
-        </div>
-      </section>
+      </div>
     </div>
-  </div>
+
+    <div class="dstrip" id="drvStrip" aria-label="تقدم الرحلة وطلبات الركوب"></div>
+  </section>
+
+  <section class="card" id="reqCard">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h3 style="margin:0">طلبات الركوب قدامك</h3>
+      <span class="badge info" id="reqCount">0</span>
+    </div>
+    <div id="reqList" class="req-list"></div>
+  </section>
+
+  <section class="card" id="chatCard">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h3 style="margin:0">رد سريع للطلاب</h3>
+      <span class="badge info" id="chatSub"></span>
+    </div>
+    <div class="quick-row" id="quick"></div>
+    <div class="msg-list" id="chatList"></div>
+    <button class="btn sec sm chat-open" id="chatToggle" type="button">✎ اكتب رسالة</button>
+    <div class="chat-input" id="chatInputRow" hidden>
+      <input id="chatIn" type="text" maxlength="200" placeholder="اكتب رسالة للطلاب..." autocomplete="off">
+      <button class="btn" id="chatSend" type="button">إرسال</button>
+    </div>
+  </section>
 </main>
+
+<div class="bottom-bar" id="bottomBar">
+  <button class="btn big go-btn ok" id="btnMain" type="button">ابدأ الرحلة</button>
+  <button class="bb-btn" id="bbReq" type="button" aria-label="طلبات الركوب"><span aria-hidden="true">🔔</span><b id="bbCount">0</b></button>
+  <button class="bb-btn" id="bbChat" type="button" aria-label="الرسائل"><span aria-hidden="true">💬</span><b id="bbChatCount" hidden>0</b></button>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="../shared/core.js"></script>
 <script src="driver.js"></script>
 </body>
-</html>

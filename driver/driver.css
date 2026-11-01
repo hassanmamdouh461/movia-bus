@@ -1,37 +1,126 @@
-/* Lotus Bus — Driver Interface CSS (Simple, clear, natural colors, responsive across all screens) */
+/* Lotus Bus — Driver Interface CSS.
+   Phone first: one column, the map in the middle, a sticky bottom bar with the main button.
+   On a laptop the same column is centred, so it looks like the phone app. */
 
 body {
-  padding-bottom: 32px;
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
 }
 
-.drv-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: 14px;
-  align-items: start;
+.wrap.drv {
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.drv-grid > * {
-  min-width: 0;
+.wrap.drv > .card {
+  margin: 0;
 }
 
 .topbar-actions {
   gap: 8px;
+  flex-wrap: nowrap;
 }
 
 .drv-sel {
   width: auto;
-  min-width: 170px;
+  min-width: 150px;
   padding: 6px 14px;
   border-radius: var(--r-pill);
   background: #f9fafb;
   font-weight: 800;
 }
 
-.drv-trip-head {
-  justify-content: space-between;
-  align-items: flex-start;
+.icon-btn {
+  appearance: none;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ---- settings sheet (alerts, driving mode, test, reopen) ---- */
+.settings-sheet {
+  position: fixed;
+  top: 64px;
+  inset-inline-start: 12px;
+  z-index: 900;
+  width: min(320px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(4, 41, 89, 0.25);
+}
+
+.settings-sheet[hidden] {
+  display: none;
+}
+
+.set-row {
+  appearance: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.set-row[aria-pressed="false"] {
+  color: var(--mute);
+}
+
+/* ---- trip line: one line, the full schedule opens on tap ---- */
+.trip-line {
+  appearance: none;
+  display: flex;
+  align-items: center;
   gap: 10px;
+  width: 100%;
+  font: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  padding: 2px 0 10px;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.trip-line b {
+  display: block;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.trip-line small {
+  display: block;
+  color: var(--mute);
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+
+.trip-line .caret {
+  flex: none;
+  color: var(--mute);
+  transition: transform 0.2s;
+}
+
+.trip-line[aria-expanded="true"] .caret {
+  transform: rotate(180deg);
 }
 
 .drv-sched-box {
@@ -40,6 +129,10 @@ body {
   border-radius: 16px;
   padding: 12px 14px;
   margin-bottom: 12px;
+}
+
+.drv-sched-box[hidden] {
+  display: none;
 }
 
 .drv-sched-head {
@@ -134,12 +227,199 @@ body {
   color: var(--ok);
 }
 
+/* ---- status banner: one colour = where the trip stands ---- */
+.status-banner {
+  --tone: var(--ink-soft);
+  --tone-bg: var(--bg);
+  --tone-line: var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+  border-radius: 16px;
+  background: var(--tone-bg);
+  border: 1.5px solid var(--tone-line);
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.status-banner b {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--tone);
+  line-height: 1.25;
+}
+
+.status-banner span {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--mute);
+}
+
+.status-banner span:empty {
+  display: none;
+}
+
+.status-banner[data-tone="green"] { --tone: var(--ok); --tone-bg: #f0fdf4; --tone-line: #bbf7d0; }
+.status-banner[data-tone="orange"] { --tone: #c2410c; --tone-bg: #fff7ed; --tone-line: #fdba74; }
+.status-banner[data-tone="blue"] { --tone: #1d4ed8; --tone-bg: #eff6ff; --tone-line: #bfdbfe; }
+.status-banner[data-tone="done"] { --tone: var(--ok); --tone-bg: #f0fdf4; --tone-line: #bbf7d0; }
+
+/* ---- map with the nearest student on it ---- */
+.map-wrap {
+  position: relative;
+}
+
 .drv-map {
-  height: 340px;
+  height: clamp(260px, 41vh, 440px);
   border-radius: 16px;
   margin: 0;
 }
 
+.map-next {
+  position: absolute;
+  inset-inline: 10px;
+  bottom: 26px;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1.5px solid var(--line-strong);
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+
+.map-next[hidden] {
+  display: none;
+}
+
+.map-next.hot {
+  border-color: var(--ok);
+}
+
+.mn-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mn-text .mute {
+  font-size: 12px;
+}
+
+.next-name {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.eta-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 6px 14px;
+  min-width: 78px;
+  flex-shrink: 0;
+}
+
+.eta-num {
+  font-size: clamp(26px, 6vw, 34px);
+  font-weight: 900;
+  color: var(--brand);
+  line-height: 1.1;
+}
+
+/* ---- progress strip: the bus and one dot per student ahead ---- */
+.dstrip {
+  margin: 14px 8px 0;
+}
+
+.ds-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: #dbe3ee;
+}
+
+.ds-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  border-radius: 999px;
+  background: var(--brand);
+  transition: width 1s linear;
+}
+
+.ds-bus {
+  position: absolute;
+  top: -19px;
+  transform: translateX(50%);
+  font-size: 22px;
+  line-height: 1;
+  z-index: 3;
+  transition: right 1s linear;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+  pointer-events: none;
+}
+
+.ds-dot {
+  appearance: none;
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  background: var(--ok);
+  box-shadow: 0 0 0 2px var(--ok);
+  transform: translate(50%, -50%);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.ds-dot.brd {
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--warn);
+}
+
+.ds-dot.near {
+  width: 22px;
+  height: 22px;
+  animation: dsPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes dsPulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--ok), 0 0 0 0 rgba(21, 128, 61, 0.45); }
+  50% { box-shadow: 0 0 0 2px var(--ok), 0 0 0 8px rgba(21, 128, 61, 0); }
+}
+
+.ds-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--mute);
+}
+
+.ds-count {
+  color: var(--ok);
+  font-weight: 800;
+}
+
+/* ---- status pill in the top bar ---- */
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -186,120 +466,126 @@ body {
   background: var(--warn);
 }
 
-/* Status Chain */
-.chain {
-  list-style: none;
-  padding: 0;
-  margin: 12px 0;
+/* ---- sticky bottom bar: main button + counters ---- */
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 700;
+  width: min(100%, 560px);
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: #fff;
+  border-top: 1px solid var(--line);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.12);
 }
 
-.chain li {
-  flex: 1;
-  text-align: center;
-  padding: 8px 6px;
-  border-radius: var(--r-pill);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--mute);
-}
-
-.chain li.done {
-  background: var(--ok-bg);
-  color: var(--ok);
-  border-color: #bbf7d0;
-}
-
-.chain li.cur {
-  background: var(--brand);
-  color: #fff;
-  border-color: var(--brand);
-  font-weight: 800;
-}
-
-/* Primary Action Button */
 .go-btn {
-  min-height: 54px;
+  flex: 1;
+  width: auto;
+  min-height: 56px;
   border-radius: var(--r-pill);
   font-size: 18px;
   font-weight: 900;
 }
 
 .go-btn.ok {
-  background: var(--brand);
+  background: var(--ok);
   color: #fff;
-  box-shadow: 0 4px 16px rgba(4, 41, 89, 0.35);
+  box-shadow: 0 4px 16px rgba(21, 128, 61, 0.35);
 }
 
-.go-btn.bad {
+.go-btn.end {
   background: var(--bad);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35);
 }
 
-.hint {
-  margin: 8px 0 12px;
-  font-size: 13px;
-  text-align: center;
+/* ending before the bus is near the end: quiet on purpose */
+.go-btn.early {
+  background: #fff;
+  color: var(--bad);
+  border: 1.5px solid #fca5a5;
+  box-shadow: none;
 }
 
-/* Next Up Request Card (nearest waiting request, big ETA) */
-.next-card {
+.bb-btn {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  background: var(--bg);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.bb-btn b {
+  position: absolute;
+  top: -4px;
+  inset-inline-start: -4px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--mute);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bb-btn b[hidden] {
+  display: none;
+}
+
+.bb-btn.hot {
+  border-color: var(--ok);
+  background: #f0fdf4;
+}
+
+.bb-btn.hot b {
+  background: var(--ok);
+}
+
+/* the toast sits above the bar; the undo toast has a button */
+.toast {
+  bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+}
+
+.toast-undo {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: #f9fafb;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 14px 16px;
 }
 
-.next-card.hot {
-  background: var(--brand-soft);
-  border-color: var(--brand);
-}
-
-.next-card > div:first-child {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-width: 0;
-}
-
-.next-name {
-  font-size: 16.5px;
+.toast-undo button {
+  appearance: none;
+  border: 0;
+  border-radius: var(--r-pill);
+  padding: 6px 16px;
+  font: inherit;
   font-weight: 800;
+  background: #fff;
   color: var(--ink);
-  overflow-wrap: anywhere;
+  cursor: pointer;
 }
 
-.eta-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 8px 14px;
-  min-width: 92px;
-  flex-shrink: 0;
-}
-
-.eta-num {
-  font-size: clamp(26px, 5vw, 34px);
-  font-weight: 900;
-  color: var(--brand);
-  line-height: 1.1;
-}
-
-/* Ready Requests List */
+/* ---- requests ---- */
 .req-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .req-empty {
@@ -310,28 +596,44 @@ body {
 
 .req-row {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   padding: 12px 14px;
   border: 1px solid var(--line);
-  border-right: 4px solid var(--info);
-  border-radius: 10px;
+  border-inline-start: 5px solid var(--info);
+  border-radius: 12px;
   background: var(--card);
 }
 
 .req-row.accepted {
-  border-right-color: var(--ok);
+  border-inline-start-color: var(--ok);
 }
 
 .req-row.boarding {
-  border-right-color: var(--warn);
+  border-inline-start-color: var(--warn);
   background: var(--warn-bg);
+}
+
+.req-d {
+  flex: none;
+  min-width: 78px;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.req-row.boarding .req-d {
+  color: var(--warn);
 }
 
 .req-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .req-info strong {
@@ -340,41 +642,25 @@ body {
 }
 
 .req-state {
-  font-size: 15.5px;
+  font-size: 14px;
   font-weight: 800;
 }
 
-.req-state.wait {
-  color: var(--info);
-}
+.req-state.wait { color: var(--info); }
+.req-state.acc { color: var(--ok); }
+.req-state.brd { color: var(--warn); }
 
-.req-state.acc {
-  color: var(--ok);
-}
-
-.req-state.brd {
-  color: var(--warn);
-}
-
-.req-count {
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--warn);
-  font-variant-numeric: tabular-nums;
-}
-
-.req-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.req-actions .btn {
+.req-row .btn {
+  width: 100%;
+  min-height: 48px;
   font-size: 15px;
-  padding: 10px;
 }
 
-/* Map Pins: students (anonymous), route terminals */
+.req-more {
+  align-self: center;
+}
+
+/* ---- map pins: students (anonymous), route terminals ---- */
 .pin.req {
   width: max-content;
   min-width: 0;
@@ -412,9 +698,39 @@ body {
   background: var(--brand);
 }
 
-/* Inline Chat */
+/* ---- chat: big quick replies, the last messages, typing behind a button ---- */
+.quick-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.qchip {
+  appearance: none;
+  border: 1.5px solid var(--line-strong);
+  background: #f3f4f6;
+  color: #111827;
+  border-radius: 14px;
+  min-height: 56px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.qchip:active {
+  transform: scale(0.97);
+  background: var(--brand-soft);
+  border-color: var(--brand);
+}
+
 .msg-list {
-  height: 195px;
+  max-height: 150px;
+  min-height: 56px;
   overflow-y: auto;
   padding: 10px;
   background: var(--bg);
@@ -424,16 +740,6 @@ body {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 10px;
-}
-
-/* Compact secondary cards before the trip starts so focus stays on Map + Start Trip */
-body.pre-trip .msg-list {
-  height: 90px;
-}
-
-body.pre-trip .quick-row,
-body.pre-trip .chat-input {
-  opacity: 0.6;
 }
 
 .bubble {
@@ -465,76 +771,21 @@ body.pre-trip .chat-input {
   margin-top: 2px;
 }
 
-.quick-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.qchip {
-  appearance: none;
-  border: 1px solid var(--line);
-  background: #f3f4f6;
-  color: #111827;
-  border-radius: var(--r-pill);
-  padding: 9px 14px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-  text-align: center;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.qchip:hover {
-  background: var(--brand-soft);
-  border-color: var(--brand);
+.chat-open {
+  width: 100%;
 }
 
 .chat-input {
   display: flex;
   gap: 8px;
+  margin-top: 8px;
 }
 
-/* Driver alerts: toggle/test row, audio hint and top banner */
-.alert-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.alert-toggle,
-.alert-test {
-  appearance: none;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  border-radius: var(--r-pill);
-  padding: 6px 14px;
-  border: 1px solid var(--line-strong);
-  background: var(--card);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.alert-toggle[aria-pressed="false"] {
-  background: var(--bg);
-  color: var(--mute);
-}
-
-.audio-hint {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--warn);
-}
-
-.audio-hint[hidden] {
+.chat-input[hidden] {
   display: none;
 }
 
+/* ---- driver-safety alert banner (new student ahead) ---- */
 .alert-banner {
   position: fixed;
   top: max(8px, env(safe-area-inset-top));
@@ -598,81 +849,6 @@ body.pre-trip .chat-input {
   opacity: 0.8;
 }
 
-/* Responsive Breakpoints */
-@media (max-width: 860px) {
-  .drv-grid {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  .drv-grid > .card,
-  .drv-grid .drv-col > .card {
-    width: 100%;
-  }
-
-  .drv-col {
-    display: contents;
-  }
-
-  .drv-grid .card {
-    margin-bottom: 0;
-  }
-
-  .m-order-1 { order: 1; }
-  .m-order-2 { order: 2; }
-  .m-order-3 { order: 3; }
-  .m-order-4 { order: 4; }
-}
-
-@media (max-width: 680px) {
-  .status-pill {
-    margin-inline-start: auto;
-    font-size: 11.5px;
-    padding: 3px 8px;
-  }
-
-  .drv-sel {
-    width: 100%;
-    flex: 1 1 100%;
-  }
-
-  .trip-sel {
-    width: 100%;
-    flex: 1 1 100%;
-    min-width: 0;
-  }
-
-  .drv-map {
-    height: 260px;
-  }
-}
-
-@media (max-width: 480px) {
-  .chain li {
-    font-size: 11.5px;
-    padding: 6px 4px;
-  }
-
-  .next-card {
-    padding: 10px 12px;
-  }
-
-  .eta-box {
-    min-width: 78px;
-    padding: 6px 10px;
-  }
-
-  .req-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .quick-row {
-    grid-template-columns: 1fr;
-  }
-}
-
 .map-focus-btn {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   border: 1px solid var(--line-strong);
@@ -687,9 +863,74 @@ body.pre-trip .chat-input {
   width: max-content;
   white-space: nowrap;
 }
+
 .mb-icon .pin.bus {
   height: 24px;
   min-width: 0;
   padding: 0 9px;
   font-size: 11.5px;
+}
+
+/* ---- driving mode: bigger, fewer things ---- */
+body.driving #drvSchedule,
+body.driving .trip-line small,
+body.driving .trip-line .caret,
+body.driving #chatList,
+body.driving #chatToggle,
+body.driving #chatInputRow {
+  display: none;
+}
+
+body.driving .status-banner b {
+  font-size: 28px;
+}
+
+body.driving .status-banner span {
+  font-size: 16px;
+}
+
+body.driving .drv-map {
+  height: clamp(340px, 56vh, 560px);
+}
+
+body.driving .go-btn {
+  min-height: 64px;
+  font-size: 20px;
+}
+
+body.driving .req-d {
+  font-size: 26px;
+}
+
+body.driving .qchip {
+  min-height: 64px;
+  font-size: 17px;
+}
+
+/* ---- small phones ---- */
+@media (max-width: 680px) {
+  .status-pill {
+    margin-inline-start: auto;
+    font-size: 11.5px;
+    padding: 3px 8px;
+  }
+
+  .drv-sel {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .topbar-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .quick-row {
+    grid-template-columns: 1fr;
+  }
+
+  .go-btn {
+    font-size: 16px;
+  }
 }

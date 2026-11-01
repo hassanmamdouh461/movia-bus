@@ -5,7 +5,6 @@
 
   const DRIVER_KEY = 'mb_driver_id';
   const QUICK_REPLIES = ['أنا في الطريق', 'وصلت نقطة الركوب', 'هنتظر دقيقة', 'هتأخر 5 دقائق'];
-  const STATUS_STEPS = [['scheduled', 'لم تبدأ'], ['en_route', 'في الطريق'], ['arrived', 'وصل الجامعة / انتهت']];
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -226,127 +225,183 @@
       state === 'live' ? 'بث الموقع شغال أثناء الرحلة' : 'متصل (لا يتم تتبعك خارج الرحلة)';
   }
 
+  /* ---- state of the page ---- */
+  const NEAR_END = 0.9;   // from here on the trip counts as "almost there": the end button becomes the main action
+  const DRIVING_KEY = 'mb_driver_driving';
+  let driving = false;
+  try { driving = localStorage.getItem(DRIVING_KEY) === '1'; } catch (e) {}
+  let reqExpanded = false, chatSeenTs = Date.now(), chatVisible = false, stripSig = '', schedSig = '';
+  const reqLimit = () => (driving ? 2 : 3);
+
+  function tripProgress(trip) {
+    const pos = trip.status === 'en_route' ? MB.position(trip) : null;
+    return pos ? pos.progress : (trip.status === 'arrived' ? 1 : 0);
+  }
+  // "25 د" / "2 س 15 د"
+  function fmtWhen(mins) {
+    if (mins < 60) return mins + ' د';
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return h + ' س' + (m ? ' ' + m + ' د' : '');
+  }
+
+  /* trip line (one line; the full schedule opens on tap) + the main button text */
   function renderHeader(trip) {
-    const s = trip.status;
-    document.body.classList.toggle('pre-trip', s !== 'en_route');
-    const paused = isPaused(trip);
     const list = driverTrips();
-    const posInSched = list.findIndex((t) => t.id === trip.id);
-    const sb = $('schedBadge');
-    if (sb) {
-      sb.textContent = list.length
-        ? 'رحلة ' + (posInSched + 1) + ' من ' + list.length + ' · إلزامية من الإدارة 🔒'
-        : 'جدول إلزامي من الإدارة 🔒';
-    }
-    $('tripTitle').textContent = MB.tripLabel(trip);
+    const idx = list.findIndex((t) => t.id === trip.id);
+    const route = MB.R[trip.routeId] || {};
+    $('tripTitle').textContent = trip.status === 'arrived' && idx === list.length - 1
+      ? 'جدول اليوم خلص (' + list.length + ' رحلات)'
+      : 'رحلة ' + (idx + 1) + ' من ' + list.length + ' · ' + trip.time + ' · ' + (route.name || '') + ' (' + (trip.direction === 'go' ? 'ذهاب' : 'عودة') + ')';
     const plate = (MB.bus[trip.busId] || {}).plate || '';
     $('tripMeta').textContent = 'حافلة: ' + plate + ' · المسجّلون: ' + trip.booked;
+    $('chatSub').textContent = MB.tripLabel(trip);
 
-    const idx = s === 'en_route' ? 1 : s === 'arrived' ? 2 : 0;
-    $('chain').innerHTML = STATUS_STEPS.map((st, i) => {
-      let label = st[1];
-      if (i === 0 && s === 'at_start') label = MB.statusLabel.at_start;
-      if (i === 1 && paused) label = 'واقف للركوب';
-      return '<li class="' + (i < idx ? 'done' : i === idx ? 'cur' : '') + '">' + label + '</li>';
-    }).join('');
-
-    const btn = $('btnMain');
+    const btn = $('btnMain'), s = trip.status;
     if (s === 'en_route') {
-      btn.textContent = 'أنهِ الرحلة والانتقال للتالية';
-      btn.className = 'btn big go-btn bad';
+      const near = tripProgress(trip) >= NEAR_END;
+      btn.textContent = near ? 'وصلت — أنهِ الرحلة' : 'أنهِ مبكراً';
+      btn.className = 'btn big go-btn ' + (near ? 'end' : 'early');
       btn.disabled = false;
     } else if (s === 'scheduled' || s === 'at_start') {
-      btn.textContent = 'ابدأ الرحلة الإلزامية الآن';
+      btn.textContent = 'ابدأ الرحلة';
       btn.className = 'btn big go-btn ok';
       btn.disabled = false;
     } else {
-      btn.textContent = 'أتممت جدول اليوم — إعادة فتح الجدول (للتجربة)';
+      btn.textContent = 'خلّصت جدول اليوم ✓';
       btn.className = 'btn big go-btn sec';
-      btn.disabled = false;
+      btn.disabled = true;
     }
-
-    $('hint').textContent =
-      s === 'en_route' ? 'حالة الرحلة وموقعك يتحدثان تلقائياً للطلاب والإدارة لحظياً.' :
-      s === 'arrived' ? 'أتممت جميع رحلات جدولك الإلزامي المعتمد من الإدارة لهذا اليوم ✓' :
-      'هذه رحلتك الإلزامية الحالية المقررة من الإدارة. اضغط «ابدأ الرحلة» عند التحرك من نقطة البداية.';
-    $('chatSub').textContent = MB.tripLabel(trip);
   }
 
-  function setNext(label, name, badge, num, unit) {
-    $('nextLabel').textContent = label;
-    $('nextName').textContent = name;
-    $('nextWait').textContent = badge;
-    $('etaNum').textContent = num;
-    $('etaUnit').textContent = unit;
+  /* one coloured banner says where the trip stands: grey not started / green running / orange boarding / blue almost there */
+  function renderStatus(trip) {
+    const route = MB.R[trip.routeId] || {};
+    const pos = trip.status === 'en_route' ? MB.position(trip) : null;
+    let tone = 'grey', main = '', sub = '';
+    if (trip.status === 'en_route') {
+      const prog = pos ? pos.progress : 0;
+      const left = MB.etaToProgress(trip, 1);
+      if (isPaused(trip)) {
+        const k = MB.pickupsOf(trip.id, true).find((x) => x.status === 'boarding');
+        tone = 'orange'; main = 'واقف للركوب'; sub = k ? 'باقي ' + secsLeft(k) + ' ث' : '';
+      } else {
+        const spent = Math.round(prog * (route.minutes || 30));
+        tone = prog >= NEAR_END ? 'blue' : 'green';
+        main = prog >= NEAR_END ? 'وصلت تقريباً — أنهِ الرحلة' : 'في الطريق';
+        sub = (spent >= 1 ? 'بدأت من ' + spent + ' د' : 'لسه في أول الخط') + (left != null && prog < NEAR_END ? ' · باقي حوالي ' + left + ' د' : '');
+      }
+    } else if (trip.status === 'at_start') {
+      tone = 'blue'; main = 'جاهز للانطلاق'; sub = 'اضغط «ابدأ الرحلة» عند التحرك';
+    } else if (trip.status === 'scheduled') {
+      const mins = Math.round((trip.scheduledAt - Date.now()) / 60000);
+      main = 'لم تبدأ'; sub = 'موعد ' + trip.time + (mins > 0 ? ' · بعد ' + fmtWhen(mins) : ' · حان الموعد');
+    } else {
+      tone = 'done'; main = 'الرحلة انتهت ✓'; sub = '';
+    }
+    $('statusBanner').dataset.tone = tone;
+    $('statusMain').textContent = main;
+    $('statusSub').textContent = sub;
   }
 
+  /* progress strip: the bus on the line from the start to the end, one dot per student still ahead (tap = look at him on the map) */
+  function renderStrip(trip) {
+    const box = $('drvStrip'), route = MB.R[trip.routeId] || {};
+    const cum = cumOf(trip), total = cum[cum.length - 1] || 1;
+    const X = (p) => Math.max(0, Math.min(100, metersAt(trip, p) / total * 100));
+    const pos = trip.status === 'en_route' ? MB.position(trip) : null;
+    const busP = pos ? pos.progress : trip.status === 'arrived' ? 1 : 0;
+    const reqs = pos ? aheadRequests(trip) : [];
+    const from = trip.direction === 'go' ? route.fromName : route.toName;
+    const to = trip.direction === 'go' ? route.toName : route.fromName;
+    const bx = X(busP).toFixed(1) + '%';
+    const sig = trip.id + '|' + (pos ? 1 : 0) + '|' + reqs.map((r) => r.k.id + r.k.status).join(',');
+    if (sig !== stripSig) {
+      stripSig = sig;
+      const dots = reqs.map((r, i) => '<button class="ds-dot ' + (r.k.status === 'boarding' ? 'brd' : 'acc') + (i === 0 ? ' near' : '') +
+        '" type="button" data-k="' + esc(r.k.id) + '" style="right:' + X(r.k.progress).toFixed(1) + '%" aria-label="طالب على بعد ' + fmtDist(r.dist) + '"></button>').join('');
+      box.innerHTML = '<div class="ds-track"><i class="ds-fill" style="width:' + bx + '"></i>' + dots +
+        '<span class="ds-bus" style="right:' + bx + '">🚌</span></div>' +
+        '<div class="ds-ends"><span>' + esc(from) + '</span><span class="ds-count">' + (reqs.length ? reqs.length + ' طالب قدامك' : '') + '</span><span>' + esc(to) + '</span></div>';
+    } else {
+      const f = box.querySelector('.ds-fill'), b = box.querySelector('.ds-bus');
+      if (f) f.style.width = bx;
+      if (b) b.style.right = bx;
+    }
+  }
+
+  /* the nearest student, as a card on the map itself (hidden when there is nobody ahead) */
   function renderNext(trip) {
     const card = $('nextCard');
-    const route = MB.R[trip.routeId];
     const pos = trip.status === 'en_route' ? MB.position(trip) : null;
     const reqs = pos ? aheadRequests(trip) : [];
-    const waitCount = MB.pickupsOf(trip.id, true).filter((k) => k.status === 'accepted').length;
     const boarding = reqs.find((r) => r.k.status === 'boarding');
-    const nearest = reqs.find((r) => r.k.status === 'accepted') || reqs.find((r) => r.k.status === 'accepted');
-    const hot = !!(nearest && nearest.k.status === 'accepted' && !boarding);
-    card.classList.toggle('hot', hot);
-
+    const nearest = reqs.find((r) => r.k.status !== 'boarding');
+    if (!boarding && !nearest) { card.hidden = true; return; }
+    card.hidden = false;
+    card.classList.toggle('hot', !boarding);
     if (boarding) {
-      setNext('واقف للركوب', 'الطلاب بيركبوا دلوقتي', 'باقي ' + secsLeft(boarding.k) + ' ث',
-        String(secsLeft(boarding.k)), 'ثانية');
-    } else if (nearest) {
-      const isWait = nearest.k.status === 'accepted';
-      setNext(isWait ? 'أقرب طلب ركوب' : 'أقرب موقف مؤكد',
-        'طالب على بُعد ' + fmtDist(nearest.dist),
-        isWait ? 'ينتظر · ' + waitCount + ' طلب نشط' : 'هتقف له',
-        String(nearest.eta), 'دقيقة');
-    } else if (pos) {
-      setNext('الطريق قدامك', route.toName, 'مفيش طلبات قدامك', '—', '');
-    } else if (trip.status === 'scheduled' || trip.status === 'at_start') {
-      setNext('موعد الانطلاق', route.fromName, 'طلبات منتظرة: ' + waitCount, trip.time, 'موعد البدء');
+      $('nextLabel').textContent = 'واقف للركوب';
+      $('nextName').textContent = 'الطلاب بيركبوا دلوقتي';
+      $('nextWait').textContent = 'باقي ' + secsLeft(boarding.k) + ' ث';
+      $('etaNum').textContent = String(secsLeft(boarding.k));
+      $('etaUnit').textContent = 'ثانية';
     } else {
-      setNext('نهاية المسار', route.toName, 'تم الوصول', '✓', 'انتهت');
+      $('nextLabel').textContent = 'أقرب طالب';
+      $('nextName').textContent = 'على بُعد ' + fmtDist(nearest.dist);
+      $('nextWait').textContent = 'هتقف له';
+      $('etaNum').textContent = nearest.eta < 1 ? '<1' : String(nearest.eta);
+      $('etaUnit').textContent = 'دقيقة';
     }
   }
 
+  /* only the nearest few requests, big and simple; the rest behind "+N أخرى" */
   function renderReqs(trip) {
     const box = $('reqList');
     const pos = trip.status === 'en_route' ? MB.position(trip) : null;
     const reqs = pos ? aheadRequests(trip) : [];
-    const sig = trip.id + '|' + (pos ? 1 : 0) + '|' + reqs.map((r) =>
+    const limit = reqLimit();
+    const sig = trip.id + '|' + (pos ? 1 : 0) + '|' + reqExpanded + '|' + limit + '|' + reqs.map((r) =>
       r.k.id + ':' + r.k.status + ':' + (r.k.status === 'boarding' ? secsLeft(r.k) : r.eta)).join(',');
     if (sig === lastReqSig) return;
     lastReqSig = sig;
     $('reqCount').textContent = reqs.length;
 
     if (!pos) {
-      box.innerHTML = '<p class="mute req-empty">تتفتح طلبات الركوب تلقائياً بمجرد ضغط «ابدأ الرحلة».</p>';
+      box.innerHTML = '<p class="mute req-empty">طلبات الركوب بتظهر هنا أول ما تبدأ الرحلة.</p>';
       return;
     }
     if (!reqs.length) {
       box.innerHTML = '<p class="mute req-empty">مفيش طلبات ركوب قدامك حالياً.</p>';
       return;
     }
-    box.innerHTML = reqs.map((r) => {
+    const shown = reqExpanded ? reqs : reqs.slice(0, limit);
+    box.innerHTML = shown.map((r) => {
       const k = r.k, id = esc(k.id);
       if (k.status === 'boarding') {
-        return '<div class="req-row boarding">' +
-          '<div class="req-info"><strong>طالب</strong>' +
-          '<span class="req-state brd">واقف — الطلاب بيركبوا</span>' +
-          '<span class="req-count">باقي ' + secsLeft(k) + ' ث</span></div></div>';
+        return '<div class="req-row boarding"><div class="req-d">' + secsLeft(k) + ' ث</div>' +
+          '<div class="req-info"><strong>طالب</strong><span class="req-state brd">واقف — الطلاب بيركبوا</span></div></div>';
       }
-      if (k.status === 'accepted') {
-        return '<div class="req-row accepted">' +
-          '<div class="req-info"><strong>طالب</strong>' +
-          '<span class="req-state acc">هتقف بعد ' + r.eta + ' دقيقة · على بُعد ' + fmtDist(r.dist) + '</span></div></div>';
-      }
-      return '<div class="req-row waiting">' +
-        '<div class="req-info"><strong>طالب</strong>' +
-        '<span class="req-state wait">على بُعد ' + fmtDist(r.dist) + ' · يوصل خلال ' + r.eta + ' د</span></div>' +
-        '<div class="req-actions">' +
-        '<button class="btn ok big" type="button" data-accept="' + id + '">تمام، هقف له</button>' +
-        '</div></div>';
-    }).join('');
+      const waiting = k.status !== 'accepted';
+      return '<div class="req-row ' + (waiting ? 'waiting' : 'accepted') + '"><div class="req-d">' + esc(fmtDist(r.dist)) + '</div>' +
+        '<div class="req-info"><strong>طالب</strong><span class="req-state ' + (waiting ? 'wait' : 'acc') + '">' +
+        (waiting ? 'يوصل خلال ' : 'هتقف بعد ') + (r.eta < 1 ? 'أقل من دقيقة' : r.eta + ' د') + '</span></div>' +
+        (waiting ? '<button class="btn ok" type="button" data-accept="' + id + '">تمام، هقف له</button>' : '') + '</div>';
+    }).join('') + (reqs.length > limit
+      ? '<button class="btn sec sm req-more" type="button" data-more="1">' + (reqExpanded ? 'عرض أقل' : '+' + (reqs.length - limit) + ' أخرى') + '</button>' : '');
+  }
+
+  /* counters on the sticky bottom bar */
+  function renderBottom(trip) {
+    const pos = trip.status === 'en_route' ? MB.position(trip) : null;
+    const n = pos ? aheadRequests(trip).length : 0;
+    $('bbCount').textContent = n;
+    $('bbReq').classList.toggle('hot', n > 0);
+    if (chatVisible) chatSeenTs = Date.now();
+    const unread = chatMsgs(trip).filter((m) => m.from !== 'driver' && m.ts > chatSeenTs).length;
+    const c = $('bbChatCount');
+    c.textContent = unread;
+    c.hidden = !unread;
+    $('bbChat').classList.toggle('hot', unread > 0);
   }
 
   /* ---- driver-safety alerts: chime (Web Audio), Arabic voice, vibration, top banner ---- */
@@ -364,7 +419,7 @@
     return audioCtx;
   }
 
-  function updateAudioHint() { $('audioHint').hidden = audioReady; }
+  function updateAudioHint() { const h = $('audioHint'); if (h) h.hidden = audioReady; }
 
   /* Browsers only allow audio after a user gesture: unlock on the first tap/key, and when the trip starts. */
   function unlockAudio() {
@@ -479,7 +534,7 @@
 
   function renderAlertToggle() {
     const b = $('alertToggle');
-    b.textContent = '🔔 التنبيهات: ' + (alertsEnabled ? 'تشغيل' : 'إيقاف');
+    b.textContent = '🔔 تنبيهات الطلاب الجديدة: ' + (alertsEnabled ? 'تشغيل' : 'إيقاف');
     b.setAttribute('aria-pressed', String(alertsEnabled));
     if (!alertsEnabled) hideBanner();
   }
@@ -489,7 +544,7 @@
   }
 
   function renderChat(trip) {
-    const msgs = chatMsgs(trip).slice(-50);
+    const msgs = chatMsgs(trip).slice(-3);
     const sig = trip.id + '|' + msgs.map((m) => m.id).join(',');
     if (sig === lastChatSig) return;
     lastChatSig = sig;
@@ -512,12 +567,17 @@
       s.chat = s.chat || [];
       s.chat.push({ id: 'c' + Date.now() + Math.random().toString(36).slice(2, 6), tripId: t.id, from: 'driver', text: clean, ts: Date.now() });
     });
+    toast('اتبعتت ✓');
   }
 
+  /* the full day's schedule: collapsed behind the trip line */
   function renderSchedule(cur) {
     const box = $('drvSchedule');
     if (!box) return;
     const list = driverTrips();
+    const sig = (cur ? cur.id : '') + '|' + list.map((t) => t.id + t.status).join(',');
+    if (sig === schedSig) return;
+    schedSig = sig;
     if (!list.length) {
       box.innerHTML = '<div class="drv-sched-head"><strong>📋 جدولك اليومي من الإدارة</strong><span class="mute">لا توجد رحلات معتمدة لك حالياً</span></div>';
       return;
@@ -531,7 +591,7 @@
       const stateTxt = isDone
         ? '✓ تم التنفيذ'
         : isCur
-          ? (t.status === 'en_route' ? '● جارية الآن' : '● رحلتك الإلزامية الآن')
+          ? (t.status === 'en_route' ? '● جارية الآن' : '● رحلتك الآن')
           : '🔒 تالية بالترتيب';
       return '<div class="drv-sched-item ' + cls + '">' +
         '<span class="drv-sched-num">' + (i + 1) + '</span>' +
@@ -543,8 +603,8 @@
     }).join('');
     box.innerHTML =
       '<div class="drv-sched-head">' +
-        '<strong>📋 جدولك اليومي المعتمد من الإدارة (' + list.length + ' رحلات)</strong>' +
-        '<span class="mute">يُنفّذ بالترتيب الإلزامي ولا يمكن تخطي رحلة</span>' +
+        '<strong>📋 جدولك اليومي من الإدارة (' + list.length + ' رحلات)</strong>' +
+        '<span class="mute">بالترتيب ولا يمكن تخطي رحلة</span>' +
       '</div>' +
       '<div class="drv-sched-list">' + items + '</div>';
   }
@@ -558,17 +618,20 @@
     renderHeader(trip);
     if (trip.id !== lastTripId) {
       lastTripId = trip.id;
-      lastPinSig = ''; lastReqSig = ''; lastChatSig = '';
+      lastPinSig = ''; lastReqSig = ''; lastChatSig = ''; stripSig = '';
       drawRoute(trip);
     }
+    renderStatus(trip);
     renderPill(trip);
     renderBus(trip);
     lastTrip = trip;
     autoFocus(trip);
     renderNext(trip);
+    renderStrip(trip);
     renderPins(trip);
     renderReqs(trip);
     renderChat(trip);
+    renderBottom(trip);
   }
 
   function renderDriverSelect() {
@@ -583,20 +646,98 @@
     };
   }
 
+  /* toast with an "undo" button (ending a trip by mistake) */
+  function toastUndo(msg, onUndo) {
+    document.querySelectorAll('.toast').forEach((n) => n.remove());
+    const t = document.createElement('div');
+    t.className = 'toast toast-undo';
+    const sp = document.createElement('span');
+    sp.textContent = msg;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = 'تراجع';
+    b.onclick = () => { t.remove(); onUndo(); };
+    t.append(sp, b);
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 7000);
+  }
+
+  function endTrip(t) {
+    MB.update((s) => {
+      const x = s.trips.find((z) => z.id === t.id);
+      if (x) x.status = 'arrived';
+    });
+    const next = currentTrip();
+    toastUndo(next && next.status !== 'arrived'
+      ? 'تم إنهاء الرحلة — الرحلة الجاية ' + next.time
+      : 'تم إنهاء الرحلة — خلّصت جدول اليوم ✓', () => {
+      if (driverTrips().some((z) => z.status === 'en_route')) return toast('مش ممكن التراجع — رحلة تانية بدأت');
+      MB.update((s) => {
+        const x = s.trips.find((z) => z.id === t.id);
+        if (x && x.status === 'arrived') x.status = 'en_route';
+      });
+      toast('رجعت الرحلة شغالة ✓');
+    });
+  }
+
+  function reopenSchedule() {
+    MB.update((s) => {
+      s.trips.forEach((z) => {
+        if (z.driverId === driverId && z.status === 'arrived') {
+          z.status = 'scheduled';
+          z.startedAt = null;
+        }
+      });
+    });
+    toast('تمت إعادة فتح جدول اليوم للتجربة ✓');
+  }
+
+  function applyDriving() {
+    document.body.classList.toggle('driving', driving);
+    const b = $('drivingToggle');
+    b.textContent = '🚗 وضع القيادة: ' + (driving ? 'تشغيل' : 'إيقاف');
+    b.setAttribute('aria-pressed', String(driving));
+  }
+
   function bindActions() {
+    /* settings sheet: alerts, driving mode, test, reopen */
+    const sheet = $('settingsSheet'), sbtn = $('settingsBtn');
+    const closeSheet = () => { sheet.hidden = true; sbtn.setAttribute('aria-expanded', 'false'); };
+    sbtn.onclick = () => { sheet.hidden = !sheet.hidden; sbtn.setAttribute('aria-expanded', String(!sheet.hidden)); };
+    document.addEventListener('click', (e) => {
+      if (!sheet.hidden && !e.target.closest('#settingsSheet') && !e.target.closest('#settingsBtn')) closeSheet();
+    });
     $('alertToggle').onclick = () => {
       alertsEnabled = !alertsEnabled;
       try { localStorage.setItem(ALERT_KEY, alertsEnabled ? '1' : '0'); } catch (e) {}
       renderAlertToggle();
       if (alertsEnabled) unlockAudio();
     };
+    $('drivingToggle').onclick = () => {
+      driving = !driving;
+      try { localStorage.setItem(DRIVING_KEY, driving ? '1' : '0'); } catch (e) {}
+      applyDriving();
+      lastReqSig = '';
+      refresh();
+      setTimeout(() => map && map.invalidateSize(), 80);
+    };
     /* test always fires (explicit action), with a fake 800 m request */
     $('alertTest').onclick = () => {
       unlockAudio();
+      closeSheet();
       fireAlert({ dist: 800, eta: 2 }, 0);
     };
+    $('reopenBtn').onclick = () => { closeSheet(); reopenSchedule(); };
     $('alertBanner').addEventListener('click', hideBanner);
 
+    /* the full schedule opens from the trip line */
+    $('tripLine').onclick = () => {
+      const box = $('drvSchedule'), open = box.hidden;
+      box.hidden = !open;
+      $('tripLine').setAttribute('aria-expanded', String(open));
+    };
+
+    /* main button: start; end (a trip ended early asks first, and any end can be undone) */
     $('btnMain').onclick = () => {
       unlockAudio();
       const t = currentTrip();
@@ -607,41 +748,59 @@
           if (x) { x.status = 'en_route'; x.startedAt = Date.now() - 45000; }
         });
         MB.notify('انطلقت الحافلة في ' + MB.tripLabel(t), 'bus');
-        toast('بدأت الرحلة الإلزامية وتم تفعيل البث التلقائي للموقع ✓');
+        toast('بدأت الرحلة — البث التلقائي للموقع شغال ✓');
       } else if (t.status === 'en_route') {
-        MB.update((s) => {
-          const x = s.trips.find((z) => z.id === t.id);
-          if (x) x.status = 'arrived';
-        });
-        const next = currentTrip();
-        if (next && next.status !== 'arrived') {
-          toast('تم إنهاء الرحلة — انتقل جدولك تلقائياً للرحلة التالية: ' + MB.tripLabel(next) + ' ✓');
-        } else {
-          toast('تم إنهاء الرحلة وأتممت جميع رحلات جدولك اليومي ✓');
-        }
-      } else if (t.status === 'arrived') {
-        MB.update((s) => {
-          s.trips.forEach((z) => {
-            if (z.driverId === driverId && z.status === 'arrived') {
-              z.status = 'scheduled';
-              z.startedAt = null;
-            }
-          });
-        });
-        toast('تمت إعادة فتح جدول اليوم للتجربة ✓');
+        if (tripProgress(t) < NEAR_END && !window.confirm('الباص لسه ما وصلش آخر الخط — تأكيد إنهاء الرحلة؟')) return;
+        endTrip(t);
       }
     };
 
+    /* requests: accept (legacy "waiting" ones) and show more / less */
     $('reqList').addEventListener('click', (e) => {
+      const a = e.target.closest('button[data-accept]');
+      if (a) { MB.acceptPickup(a.dataset.accept); return; }
+      if (e.target.closest('button[data-more]')) { reqExpanded = !reqExpanded; lastReqSig = ''; const t = currentTrip(); if (t) renderReqs(t); }
     });
 
+    /* a dot on the strip = look at that student on the map */
+    $('drvStrip').addEventListener('click', (e) => {
+      const d = e.target.closest('[data-k]');
+      if (!d || !map) return;
+      const k = (MB.state.pickups || []).find((x) => x.id === d.dataset.k);
+      if (!k) return;
+      focusMode = 'manual';
+      updateFocusBtn();
+      map.flyTo([k.lat, k.lng], 17, { duration: 0.8 });
+      try { $('map').scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (err) {}
+    });
+
+    /* sticky bar shortcuts */
+    $('bbReq').onclick = () => $('reqCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('bbChat').onclick = () => {
+      chatSeenTs = Date.now();
+      $('chatCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const t = currentTrip();
+      if (t) renderBottom(t);
+    };
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver((es) => es.forEach((e) => {
+        chatVisible = e.isIntersecting;
+        if (chatVisible) { chatSeenTs = Date.now(); const t = currentTrip(); if (t) renderBottom(t); }
+      }), { threshold: 0.6 }).observe($('chatCard'));
+    }
+
+    /* quick replies are big buttons; typing is behind "اكتب رسالة" */
     $('quick').innerHTML = QUICK_REPLIES.map((q) =>
       '<button class="qchip" type="button" data-q="' + esc(q) + '">' + esc(q) + '</button>').join('');
     $('quick').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-q]');
       if (b) sendChat(b.dataset.q);
     });
-
+    $('chatToggle').onclick = () => {
+      const row = $('chatInputRow');
+      row.hidden = !row.hidden;
+      if (!row.hidden) $('chatIn').focus();
+    };
     const submit = () => {
       const inp = $('chatIn');
       const v = inp.value;
@@ -659,7 +818,7 @@
   renderDriverSelect();
   bindActions();
   renderAlertToggle();
-  updateAudioHint();
+  applyDriving();
   refresh();
   MB.subscribe(refresh);
   setInterval(refresh, 1000);
