@@ -202,10 +202,19 @@
     }
   }
 
-  // the chat belongs to the trip I'm registered in; it opens only once that trip's driver starts it
+  // the chat belongs to the trip I'm on: my booked "go" trip, or a return trip (no booking needed) —
+  // the one I picked on the map, else the running return trip of my line once my go trip is over.
+  // It opens only once that trip's driver starts it.
   function chatTrip(s) {
     const b = activeGoBooking(s);
-    return b ? trip(b.tripId) : null;
+    const goT = b ? trip(b.tripId) : null;
+    if (draft.dir === 'back') {
+      const t = pickActive(s);
+      if (t && t.direction === 'back') return t;
+    }
+    if (goT && goT.status !== 'arrived') return goT;
+    const backs = s.trips.filter((t) => t.direction === 'back' && (t.status === 'en_route' || t.status === 'at_start'));
+    return (goT && backs.find((t) => t.routeId === goT.routeId)) || backs[0] || goT;
   }
   function chatMsgs(s, tid) { return s.chat.filter((c) => c.tripId === tid).sort((a, b) => a.ts - b.ts); }
   function unreadChat(s) {
@@ -636,11 +645,29 @@
     '</div>';
   }
 
+  function chatListHtml(msgs, open, lockMsg) {
+    return msgs.length
+      ? msgs.map((c) => '<div class="bub-row ' + (c.from === 'student' ? 'me' : 'drv') + '"><div class="bub">' + esc(c.text) + '</div><div class="bub-ts">' + (c.from === 'student' ? 'أنت · ' : 'السائق · ') + esc(MB.fmtTime(c.ts)) + '</div></div>').join('')
+      : '<div class="mute" style="margin:auto;text-align:center">' + (open ? 'ابدأ المحادثة مع السائق أو اختر رداً سريعاً بالأسفل.' : esc(lockMsg)) + '</div>';
+  }
+
+  // while the student is typing, refresh only the message list (a full render would wipe the input focus)
+  function refreshChatList() {
+    const s = MB.state, t = chatTrip(s);
+    const list = document.getElementById('chatList');
+    const input = document.getElementById('chatInput');
+    if (!t || !list || !input || input.dataset.trip !== t.id || t.status !== 'en_route') return false;
+    list.innerHTML = chatListHtml(chatMsgs(s, t.id), true, '');
+    list.scrollTop = list.scrollHeight;
+    if (unreadChat(s) > 0) MB.update((st) => { st.me.chatReadTs = now(); });
+    return true;
+  }
+
   function chatView(s) {
     const t = chatTrip(s);
     if (!t) {
       return '<div class="chat-card-wrap"><section class="card"><h3>المحادثة مع السائق</h3>' +
-        '<p class="mute" style="margin:0">سجّل في رحلة ذهاب من «رحلتي والتتبع» عشان تقدر تتواصل مع سائقها.</p></section></div>';
+        '<p class="mute" style="margin:0">سجّل في رحلة ذهاب، أو اختار رحلة العودة من «رحلتي والتتبع» (زرار عودة) عشان تقدر تتواصل مع سائقها.</p></section></div>';
     }
     const drv = MB.drv[t.driverId] || { name: '—' };
     const bus = MB.bus[t.busId] || { plate: '—' };
@@ -660,11 +687,7 @@
           '</div>' +
           statusBadge(t) +
         '</div>' +
-        '<div class="chat-list" id="chatList">' +
-          (msgs.length
-            ? msgs.map((c) => '<div class="bub-row ' + (c.from === 'student' ? 'me' : 'drv') + '"><div class="bub">' + esc(c.text) + '</div><div class="bub-ts">' + (c.from === 'student' ? 'أنت · ' : 'السائق · ') + esc(MB.fmtTime(c.ts)) + '</div></div>').join('')
-            : '<div class="mute" style="margin:auto;text-align:center">' + (open ? 'ابدأ المحادثة مع السائق أو اختر رداً سريعاً بالأسفل.' : esc(lockMsg)) + '</div>') +
-        '</div>' +
+        '<div class="chat-list" id="chatList">' + chatListHtml(msgs, open, lockMsg) + '</div>' +
         (open
           ? '<div class="chips">' +
               QUICK_REPLIES.map((q) => '<button class="chip" type="button" data-act="chip" data-trip="' + t.id + '" data-text="' + esc(q) + '">' + esc(q) + '</button>').join('') +
@@ -969,7 +992,7 @@
 
   MB.subscribe(() => {
     if (!busy()) render();
-    else pending = true;
+    else if (!(document.activeElement.id === 'chatInput' && refreshChatList())) pending = true;
   });
   app.addEventListener('focusout', () => {
     setTimeout(() => { if (pending && !busy()) { pending = false; render(); } }, 200);
