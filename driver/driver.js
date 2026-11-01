@@ -759,8 +759,8 @@
         MB.notify('انطلقت الحافلة في ' + MB.tripLabel(t), 'bus');
         toast('بدأت الرحلة — البث التلقائي للموقع شغال ✓');
       } else if (t.status === 'en_route') {
-        if (tripProgress(t) < NEAR_END && !window.confirm('الباص لسه ما وصلش آخر الخط — تأكيد إنهاء الرحلة؟')) return;
-        endTrip(t);
+        if (tripProgress(t) >= NEAR_END) { endTrip(t); return; }
+        MB.confirm('الباص لسه ما وصلش آخر الخط — تأكيد إنهاء الرحلة؟', { ok: 'أنهِ الرحلة', cancel: 'كمّل', danger: true }).then((yes) => { if (yes) endTrip(t); });
       }
     };
 

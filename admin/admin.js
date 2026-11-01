@@ -99,13 +99,17 @@
   function cancelTrip(id) {
     const t = MB.trip(id);
     if (!t || !canChange(t)) return toast('لا يمكن إلغاء هذه الرحلة', true);
-    if (!window.confirm('إلغاء ' + titleOf(t) + '؟')) return;
-    const snap = { ...t };
-    const isDraft = t.published === false;
-    const alt = findAlt(t);
-    MB.update((s) => retireTrip(s, id));
-    if (!isDraft) MB.notify('ملغاة: ' + titleOf(snap) + '. ' + (alt ? 'أقرب بديل: ' + titleOf(alt) : 'لا توجد رحلة بديلة في نفس اليوم'), 'info');
-    toast(isDraft ? 'حُذفت المسودة ✓' : 'تم إلغاء الرحلة وإرسال التنبيه بالبديل ✓');
+    MB.confirm('إلغاء ' + titleOf(t) + '؟', { ok: 'إلغاء الرحلة', cancel: 'رجوع', danger: true }).then((yes) => {
+      if (!yes) return;
+      const cur = MB.trip(id);
+      if (!cur || !canChange(cur)) return toast('لا يمكن إلغاء هذه الرحلة', true);
+      const snap = { ...cur };
+      const isDraft = cur.published === false;
+      const alt = findAlt(cur);
+      MB.update((s) => retireTrip(s, id));
+      if (!isDraft) MB.notify('ملغاة: ' + titleOf(snap) + '. ' + (alt ? 'أقرب بديل: ' + titleOf(alt) : 'لا توجد رحلة بديلة في نفس اليوم'), 'info');
+      toast(isDraft ? 'حُذفت المسودة ✓' : 'تم إلغاء الرحلة وإرسال التنبيه بالبديل ✓');
+    });
   }
 
   function mergeTrip(id) {
@@ -113,16 +117,20 @@
     if (!t || t.status !== 'scheduled') return toast('لا يمكن دمج هذه الرحلة', true);
     const next = nextTripOf(t);
     if (!next) return toast('لا توجد رحلة تالية لنفس الخط للدمج فيها', true);
-    if (!window.confirm('دمج ' + titleOf(t) + ' في ' + titleOf(next) + '؟')) return;
-    const snap = { ...t };
-    const total = t.booked;
-    MB.update((s) => {
-      const n = s.trips.find((x) => x.id === next.id);
-      n.booked += total;
-      retireTrip(s, id);
+    MB.confirm('دمج ' + titleOf(t) + ' في ' + titleOf(next) + '؟', { ok: 'دمج', danger: false }).then((yes) => {
+      if (!yes) return;
+      const cur = MB.trip(id), nxt = MB.trip(next.id);
+      if (!cur || !nxt || cur.status !== 'scheduled') return toast('لا يمكن دمج هذه الرحلة', true);
+      const snap = { ...cur };
+      const total = cur.booked;
+      MB.update((s) => {
+        const n = s.trips.find((x) => x.id === next.id);
+        n.booked += total;
+        retireTrip(s, id);
+      });
+      if (snap.published !== false) MB.notify('تم دمج ' + titleOf(snap) + ' في ' + titleOf(next) + ' (' + total + ' مسجّل)', 'info');
+      toast('تم دمج ' + total + ' مسجّل في الرحلة التالية ✓');
     });
-    if (snap.published !== false) MB.notify('تم دمج ' + titleOf(snap) + ' في ' + titleOf(next) + ' (' + total + ' مسجّل)', 'info');
-    toast('تم دمج ' + total + ' مسجّل في الرحلة التالية ✓');
   }
 
   // "زوّد حافلة": adds a draft bus for the same line/time (students stay on their booked trip)
@@ -238,11 +246,13 @@
   }
 
   function reopenAsDraft() {
-    if (!window.confirm('إعادة فتح جدول اليوم كمسودة؟ الرحلات المجدولة (غير المنطلقة) ستختفي عن الطلاب والسائقين حتى تؤكد النشر.')) return;
-    MB.update((s) => s.trips.forEach((t) => { if (dayKey(t.scheduledAt) === todayKey() && t.status === 'scheduled') t.published = false; }));
-    draft = null;
-    refreshOpsPanel();
-    toast('الجدول أصبح مسودة ✓');
+    MB.confirm('إعادة فتح جدول اليوم كمسودة؟ الرحلات المجدولة (غير المنطلقة) ستختفي عن الطلاب والسائقين حتى تؤكد النشر.', { ok: 'إعادة الفتح', danger: true }).then((yes) => {
+      if (!yes) return;
+      MB.update((s) => s.trips.forEach((t) => { if (dayKey(t.scheduledAt) === todayKey() && t.status === 'scheduled') t.published = false; }));
+      draft = null;
+      refreshOpsPanel();
+      toast('الجدول أصبح مسودة ✓');
+    });
   }
 
   function renderUnifiedSchedule() {
@@ -782,11 +792,13 @@
     heatGo: (d) => { if (map) map.flyTo([+d.lat, +d.lng], 16, { duration: 0.9 }); },
     // back to the starting demo data on every device (bookings, Ready requests, chat, notifications...)
     demoReset: () => {
-      if (!window.confirm('إعادة ضبط بيانات العرض التجريبي؟\nسيتم مسح كل الحجوزات وطلبات Ready والمحادثات والإشعارات على كل الأجهزة، والرجوع لبيانات البداية.')) return;
-      draft = null;
-      polDraft = null;
-      MB.reset();
-      toast(MB.online ? 'تمت إعادة الضبط على كل الأجهزة ✓' : 'تمت إعادة الضبط على هذا الجهاز — غير متصل بالسيرفر حالياً', !MB.online);
+      MB.confirm('إعادة ضبط بيانات العرض التجريبي؟\nسيتم مسح كل الحجوزات وطلبات Ready والمحادثات والإشعارات على كل الأجهزة، والرجوع لبيانات البداية.', { ok: 'إعادة الضبط', danger: true }).then((yes) => {
+        if (!yes) return;
+        draft = null;
+        polDraft = null;
+        MB.reset();
+        toast(MB.online ? 'تمت إعادة الضبط على كل الأجهزة ✓' : 'تمت إعادة الضبط على هذا الجهاز — غير متصل بالسيرفر حالياً', !MB.online);
+      });
     },
     pubRemove: ({ i }) => {
       const d = draft[+i];

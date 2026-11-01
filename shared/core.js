@@ -396,6 +396,45 @@
   window.MB = MB;
 })();
 
+/* In-page confirm dialog: MB.confirm(message, { ok, cancel, danger }) -> Promise<boolean>.
+   window.confirm() is silently blocked in some embedded browsers (the button then "does nothing"), so we draw our own. */
+window.MB.confirm = function (message, opts) {
+  const o = Object.assign({ ok: 'تأكيد', cancel: 'رجوع', danger: false }, opts);
+  return new Promise((resolve) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'modal';
+    wrap.setAttribute('role', 'alertdialog');
+    wrap.setAttribute('aria-modal', 'true');
+    const card = document.createElement('div');
+    card.className = 'card';
+    const p = document.createElement('p');
+    p.style.cssText = 'margin:0 0 16px;font-size:16px;font-weight:700;line-height:1.7;white-space:pre-line';
+    p.textContent = message;
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.cssText = 'justify-content:flex-end;gap:8px';
+    const no = document.createElement('button');
+    no.type = 'button';
+    no.className = 'btn sec';
+    no.textContent = o.cancel;
+    const yes = document.createElement('button');
+    yes.type = 'button';
+    yes.className = 'btn' + (o.danger ? ' bad' : '');
+    yes.textContent = o.ok;
+    row.append(no, yes);
+    card.append(p, row);
+    wrap.append(card);
+    const done = (v) => { document.removeEventListener('keydown', onKey, true); wrap.remove(); resolve(v); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); done(false); } };
+    no.onclick = () => done(false);
+    yes.onclick = () => done(true);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) done(false); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(wrap);
+    (o.danger ? no : yes).focus();
+  });
+};
+
 /* Installable app (Add to Home Screen): register the service worker when served over http(s). */
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
