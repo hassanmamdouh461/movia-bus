@@ -589,3 +589,9 @@ h1, h2, h3, strong {
     padding: 11px 10px;
   }
 }
+
+/* Leaflet gives its panes/controls z-index up to 1000; keep them inside the map so they never draw over the
+   sticky top bar or the fixed bottom navigation. */
+.leaflet-container {
+  isolation: isolate;
+}
