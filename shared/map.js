@@ -51,41 +51,62 @@
   }
 
   /* ---- route: white outline, grey part already driven, coloured part ahead, direction arrows ---- */
+  /* direction arrows along the route: sparse when the whole route is in view, denser the closer you zoom */
+  const ARROW_SPACING = [[15, 450], [13, 900], [0, 1800]];   // [min zoom, metres between arrows]
+
   function chevrons(map, poly) {
-    const L = window.L, group = L.layerGroup();
-    let acc = 0, next = 400;
-    for (let i = 0; i < poly.length - 1; i++) {
-      const seg = Math.hypot((poly[i + 1][0] - poly[i][0]) * 111000, (poly[i + 1][1] - poly[i][1]) * 98000);
-      while (seg > 0 && acc + seg >= next) {
-        const k = (next - acc) / seg;
-        const pt = [poly[i][0] + (poly[i + 1][0] - poly[i][0]) * k, poly[i][1] + (poly[i + 1][1] - poly[i][1]) * k];
-        const hd = bearing(poly[i], poly[i + 1]);
-        if (hd !== null) {
-          L.marker(pt, {
-            icon: L.divIcon({
-              className: 'mb-chev',
-              html: '<svg viewBox="0 0 14 14" width="14" height="14" style="transform:rotate(' + hd.toFixed(0) + 'deg)"><path d="M3 9 7 4l4 5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-              iconSize: [14, 14],
-              iconAnchor: [7, 7],
-            }),
-            interactive: false,
-            keyboard: false,
-          }).addTo(group);
-        }
-        next += 700;
-      }
-      acc += seg;
+    const L = window.L;
+    const cum = [0];
+    for (let i = 1; i < poly.length; i++) {
+      cum.push(cum[i - 1] + Math.hypot((poly[i][0] - poly[i - 1][0]) * 111000, (poly[i][1] - poly[i - 1][1]) * 98000));
     }
-    // arrows only when zoomed in enough to read them
+    const total = cum[cum.length - 1];
+    const atDist = (d) => {
+      d = Math.max(0, Math.min(total, d));
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < d) i++;
+      const seg = cum[i] - cum[i - 1] || 1, k = (d - cum[i - 1]) / seg;
+      return [poly[i - 1][0] + (poly[i][0] - poly[i - 1][0]) * k, poly[i - 1][1] + (poly[i][1] - poly[i - 1][1]) * k];
+    };
+    // one layer per spacing; the one that fits the current zoom is shown
+    const layers = ARROW_SPACING.map(([minZoom, spacing]) => {
+      const group = L.layerGroup();
+      for (let d = spacing / 2; d < total; d += spacing) {
+        // direction measured over ~50 m so tiny zig-zags do not point an arrow the wrong way
+        const hd = bearing(atDist(d - 25), atDist(d + 25));
+        if (hd === null) continue;
+        L.marker(atDist(d), {
+          icon: L.divIcon({
+            className: 'mb-chev',
+            html: '<svg viewBox="0 0 16 16" width="16" height="16" style="transform:rotate(' + hd.toFixed(0) + 'deg)">' +
+              '<path d="M3.5 10.5 8 5l4.5 5.5" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>' +
+              '<path d="M3.5 10.5 8 5l4.5 5.5" fill="none" stroke="#042959" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
+          }),
+          interactive: false,
+          keyboard: false,
+        }).addTo(group);
+      }
+      return { minZoom, group };
+    });
     const sync = () => {
-      const show = map.getZoom() >= 14;
-      if (show && !map.hasLayer(group)) group.addTo(map);
-      if (!show && map.hasLayer(group)) map.removeLayer(group);
+      const z = map.getZoom();
+      const want = layers.find((l) => z >= l.minZoom);
+      layers.forEach((l) => {
+        const on = l === want;
+        if (on && !map.hasLayer(l.group)) l.group.addTo(map);
+        if (!on && map.hasLayer(l.group)) map.removeLayer(l.group);
+      });
     };
     map.on('zoomend', sync);
     sync();
-    group._off = () => map.off('zoomend', sync);
-    return group;
+    return {
+      destroy() {
+        map.off('zoomend', sync);
+        layers.forEach((l) => { if (map.hasLayer(l.group)) map.removeLayer(l.group); });
+      },
+    };
   }
 
   function route(map, poly, color) {
@@ -99,8 +120,7 @@
       casing, done, line, arrows, poly,
       destroy() {
         [casing, done, line].forEach((l) => map.removeLayer(l));
-        arrows._off();
-        if (map.hasLayer(arrows)) map.removeLayer(arrows);
+        arrows.destroy();
       },
     };
   }
