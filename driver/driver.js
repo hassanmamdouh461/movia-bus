@@ -89,7 +89,7 @@
   let lastTripId = null, lastPinSig = '', lastReqSig = '', lastChatSig = '';
   let knownPickups = null;
   // map focus: 'auto' keeps the bus and the nearest student in frame (only moves when it has to), 'manual' = the driver moved the map, 'all' = whole route
-  let focusMode = 'auto', lastFitKey = '', focusBtns = {}, lastTouchAt = 0;
+  let focusMode = 'auto', focusBtns = {}, lastTouchAt = 0;
   let routeObj = null, routePoly = null, dbus = null, pinMarkers = {}, linkLine = null, linkLbl = null, lastTick = 0;
 
   function initMap() {
@@ -101,8 +101,6 @@
     linkLayer = L.layerGroup().addTo(map);
     const takeOver = () => { lastTouchAt = Date.now(); if (focusMode === 'auto') { focusMode = 'manual'; updateFocusBtn(); } };
     map.on('dragstart drag', takeOver);
-    // a zoom we did not start ourselves (zoom buttons, pinch) means the driver took over
-    map.on('zoomstart', () => { if (performance.now() > camLockUntil) takeOver(); });
     // route end labels fade out when zoomed in close
     map.on('zoomend', () => map.getContainer().classList.toggle('zoomed-in', map.getZoom() >= 15));
     const FocusCtl = L.Control.extend({
@@ -118,7 +116,7 @@
           focusBtns[key] = b;
         };
         mk('auto', 'تتبّع تلقائي', () => {
-          focusMode = 'auto'; lastFitKey = '';
+          focusMode = 'auto';
           updateFocusBtn();
           if (lastTrip) autoFocus(lastTrip, true);
         });
@@ -144,52 +142,34 @@
   }
 
   /* Auto focus = a camera that follows the bus like a navigation app.
-     Once a second we decide the zoom (and jump when the situation changes: boarding / a new nearest student / following);
-     every animation frame the camera glides towards its target, so the bus stays in the middle and nothing jumps.
-     The target is the bus alone, or - when the nearest student is close (<= 1.5 km) - the middle between the bus and him. */
-  let camBus = null, camTgt = null, camLockUntil = 0;
+     It only keeps the bus in the middle (gliding every animation frame); the ZOOM is the driver's: we set a starting zoom
+     once per trip and never touch it again, so he can zoom in or out as much as he likes while it keeps following. */
+  let camBus = null, camZoomSet = false, camLockUntil = 0;
 
   function autoFocus(trip, force) {
     // the driver moved the map: leave it alone for 8 s, then go back to following the bus
-    if (map && focusMode === 'manual' && Date.now() - lastTouchAt > 8000) { focusMode = 'auto'; lastFitKey = ''; updateFocusBtn(); force = true; }
+    if (map && focusMode === 'manual' && Date.now() - lastTouchAt > 8000) { focusMode = 'auto'; updateFocusBtn(); force = true; }
     if (!map || focusMode !== 'auto' || trip.status !== 'en_route') return;
     const pos = MB.position(trip);
     if (!pos) return;
-    const reqs = aheadRequests(trip);
-    const boarding = reqs.find((r) => r.k.status === 'boarding');
-    const target = reqs.find((r) => r.k.status !== 'boarding');
     const bus = L.latLng(pos.lat, pos.lng);
-    let key, zWant;
-    camTgt = null;
-    if (boarding) {
-      key = 'brd'; zWant = 17;
-    } else if (target && target.dist <= 1500) {
-      const tl = L.latLng(target.k.lat, target.k.lng);
-      key = 'req|' + target.k.id;
-      camTgt = tl;
-      // the zoom that fits the bus and the student, kept between 14 and 17
-      zWant = Math.max(14, Math.min(17, map.getBoundsZoom(L.latLngBounds([bus, tl]), false, L.point(70, 90))));
-    } else {
-      key = 'follow'; zWant = 15;
-    }
-    const nowMs = performance.now();
-    const center = camTgt ? L.latLng((bus.lat + camTgt.lat) / 2, (bus.lng + camTgt.lng) / 2) : bus;
-    if (force || key !== lastFitKey) {
-      lastFitKey = key;
-      camLockUntil = nowMs + 900;   // set first: our own zoom must not look like the driver's
-      map.setView(center, zWant, { animate: true, duration: 0.8 });
-    } else if (Math.abs(map.getZoom() - zWant) >= 1) {
-      camLockUntil = nowMs + 450;
-      map.setZoom(zWant, { animate: true });
+    if (!camZoomSet) {
+      // starting view of a trip: close on the bus
+      camZoomSet = true;
+      camLockUntil = performance.now() + 900;
+      map.setView(bus, 15, { animate: true, duration: 0.8 });
+    } else if (force) {
+      // back to following: keep the zoom the driver has now, just bring the bus to the middle
+      camLockUntil = performance.now() + 900;
+      map.panTo(bus, { animate: true, duration: 0.6 });
     }
   }
 
-  /* every frame: glide the camera towards the target (bus, or the middle between the bus and the nearest student) */
+  /* every frame: glide the camera so the bus stays in the middle (same zoom as now) */
   function followCamera() {
     if (!map || focusMode !== 'auto' || !camBus || performance.now() < camLockUntil || map._animatingZoom) return;
-    const want = camTgt ? L.latLng((camBus[0] + camTgt.lat) / 2, (camBus[1] + camTgt.lng) / 2) : L.latLng(camBus[0], camBus[1]);
     const c = map.getCenter(), k = 0.18;
-    map.setView(L.latLng(c.lat + (want.lat - c.lat) * k, c.lng + (want.lng - c.lng) * k), map.getZoom(), { animate: false });
+    map.setView(L.latLng(c.lat + (camBus[0] - c.lat) * k, c.lng + (camBus[1] - c.lng) * k), map.getZoom(), { animate: false });
   }
 
   function drawRoute(trip) {
@@ -212,8 +192,9 @@
     }).addTo(routeLayer);
     term(routePoly[0], trip.direction === 'go' ? route.fromName : route.toName, 'start');
     term(routePoly[routePoly.length - 1], trip.direction === 'go' ? route.toName : route.fromName, 'end');
-    map.fitBounds(L.latLngBounds(routePoly), { padding: [28, 28] });
-    lastFitKey = '';
+    // no animation: a pending animated fit would later undo the starting zoom set right after
+    map.fitBounds(L.latLngBounds(routePoly), { padding: [28, 28], animate: false });
+    camZoomSet = false;
   }
 
   /* students ahead as numbered dots (1 = nearest), same numbers as on the strip */
