@@ -19,7 +19,7 @@
   const PK_CLS = { waiting: 'warn', accepted: 'ok', boarding: 'ok', boarded: 'ok', skipped: 'bad', passed: 'bad' };
 
   const draft = {
-    route: 'r1',
+    route: 'r4',
     dir: 'go',          // 'go' (ذهاب) or 'back' (عودة) in the map card
     showPicker: false,  // collapsed by default when student already has an active 'go' booking
     pickMode: null,     // trip id while the student is choosing a point on the map
