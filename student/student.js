@@ -306,10 +306,10 @@
       bb.status = 'missed';
       st.pickups = (st.pickups || []).filter((k) => !(k.tripId === bb.tripId && k.mine));
       if (tt) releaseSeat(tt);
-      if (tt) st.notifications.unshift(note('فاتك موعد ' + label(tt) + ' — يمكنك التسجيل في رحلة ذهاب أخرى الآن', 'cancel', tt.id));
+      if (tt) st.notifications.unshift(note('فاتتك الرحلة ' + label(tt), 'cancel', tt.id));
     });
     draft.showPicker = true;
-    toast('اختر رحلة ذهاب بديلة من القائمة');
+    toast('فاتتك الرحلة');
   }
 
   // Ready: student MUST be on/near the route line (within 250m) and ahead of the bus, and press Ready themselves.
@@ -526,7 +526,7 @@
       '</div>';
     } else if (missedEntry) {
       const mt = trip(missedEntry.tripId);
-      headerHtml = '<div class="dir-note bad"><b>فاتتك الرحلة' + (mt ? ' (' + esc(MB.R[mt.routeId].name) + ' · ' + esc(mt.time) + ')' : '') + '</b> — اختر رحلة ذهاب بديلة بالأسفل:</div>';
+      headerHtml = '<div class="dir-note bad"><b>فاتتك الرحلة' + (mt ? ' (' + esc(MB.R[mt.routeId].name) + ' · ' + esc(mt.time) + ')' : '') + '</b></div>';
     } else {
       headerHtml = '<div class="dir-note"><b>اختر رحلة الذهاب للتسجيل (الحد الأقصى رحلة واحدة):</b></div>';
     }
