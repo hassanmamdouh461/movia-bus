@@ -161,30 +161,178 @@
     if (t && t.status === 'en_route') return fmtEta({ kind: 'min', m: MB.etaToProgress(t, 1) });
     return etaText(t);
   }
-  function etaBigHtml(t) {
-    if (t.status === 'en_route') {
-      const info = etaInfo(t);
-      if (info.kind === 'min') return (info.m <= 1 ? 1 : info.m) + ' <small>دقيقة</small>';
-      if (info.kind === 'now') return 'الآن <small>اركب الآن</small>';
-      if (info.kind === 'skipped') return 'مش هيقف <small>السواق معتذر</small>';
-      return 'مرت <small>الحافلة عدّت مكانك</small>';
+  // ---------- ETA card: one question, one answer ----------
+  // spoken Egyptian Arabic: دقيقة / دقيقتين / 6 دقايق / 15 دقيقة
+  function minsWord(m) {
+    if (m <= 1) return 'دقيقة';
+    if (m === 2) return 'دقيقتين';
+    return m + (m <= 10 ? ' دقايق' : ' دقيقة');
+  }
+  function bigMins(m) {
+    if (m <= 1) return '<b>أقل من دقيقة</b>';
+    if (m === 2) return '<b>دقيقتين</b>';
+    return '<b>' + m + '</b> <small>' + (m <= 10 ? 'دقايق' : 'دقيقة') + '</small>';
+  }
+  const clockIn = (m) => MB.fmtTime(Date.now() + m * 60000);
+
+  // metres of path between two progress values (progress is per path point, not per metre)
+  function distAlong(poly, p1, p2) {
+    const a = Math.min(p1, p2), b = Math.max(p1, p2), n = poly.length - 1;
+    const fa = a * n, fb = b * n;
+    let d = 0;
+    for (let i = Math.floor(fa); i <= Math.min(n - 1, Math.floor(fb)); i++) {
+      const s0 = Math.max(fa, i), s1 = Math.min(fb, i + 1);
+      if (s1 > s0) d += Math.hypot((poly[i + 1][0] - poly[i][0]) * 111000, (poly[i + 1][1] - poly[i][1]) * 98000) * (s1 - s0);
     }
-    if (t.status === 'scheduled') return esc(t.time) + ' <small>موعد الانطلاق</small>';
-    if (t.status === 'at_start') return 'الآن <small>في بداية الخط</small>';
-    if (t.status === 'arrived') return 'وصلت <small>انتهت الرحلة</small>';
-    return '—';
+    return d;
   }
-  function stepperHtml(t) {
-    const info = etaInfo(t);
-    const pk = myPk(MB.state, t.id);
-    const pkOpen = pk && (pk.status === 'waiting' || pk.status === 'accepted');
-    const near = !!info && info.kind === 'min' && pkOpen && info.m <= 3;
-    const idx = t.status === 'arrived' ? 2
-      : (info && info.kind === 'now') || near ? 1
-        : (t.status === 'en_route' ? 0 : -1);
-    return '<ol class="stepper">' + ['في الطريق', 'اقتربت من مكانك', 'وصلت الوجهة'].map((n, i) =>
-      '<li class="' + (i < idx ? 'done' : i === idx ? 'cur' : '') + '">' + n + '</li>').join('') + '</ol>';
+
+  // minutes behind the timetable (0 = on time). A trip hours off its slot is just a demo run started at an arbitrary time.
+  function lateMin(t) {
+    if (t.status === 'cancelled' || t.status === 'arrived') return 0;
+    const m = Math.round(((t.startedAt || Date.now()) - t.scheduledAt) / 60000);
+    return m > 5 && m <= 120 ? m : 0;
   }
+
+  const READY_BTN = (tid) => '<button class="btn eta-action" type="button" data-act="ready" data-trip="' + tid + '">أنا واقف على الخط — جاهز (Ready)</button>';
+
+  // everything the card shows for this trip right now
+  function etaModel(s, t) {
+    const ends = endNames(t);
+    const poly = MB.polyOf(t);
+    const pos = MB.position(t);
+    const back = t.direction === 'back';
+    const pk = back ? null : myPk(s, t.id);
+    const pkOpen = !!pk && (pk.status === 'waiting' || pk.status === 'accepted');
+    const eligible = !back && !!bookingFor(s, t.id) && (t.status === 'at_start' || t.status === 'en_route');
+    const loc = draft.myLoc;
+    const m = { tone: 'neutral', head: '', big: '', sub: '', chips: [], busP: 0, meP: null, action: '' };
+    const dist = (toP) => { if (pos) m.chips.push('على بعد ' + fmtDist(distAlong(poly, pos.progress, toP))); };
+
+    if (t.status === 'en_route' && pos) m.busP = pos.progress;
+    else if (t.status === 'arrived') m.busP = 1;
+
+    // where I stand on the path: my pickup spot, else my live position when I'm on / near the line
+    let snapMe = null;
+    if (loc) { const sn = MB.snap(t, loc.lat, loc.lng); if (sn.distM <= 250) snapMe = sn; }
+    if (pk && (pkOpen || pk.status === 'boarding' || pk.status === 'boarded')) m.meP = pk.progress;
+    else if (snapMe) m.meP = snapMe.progress;
+
+    const late = lateMin(t);
+    if (late) m.chips.push('متأخر ' + minsWord(late) + ' عن الجدول');
+
+    if (t.status === 'cancelled') { m.tone = 'bad'; m.head = 'الرحلة دي اتلغت'; return m; }
+    if (t.status === 'arrived') { m.tone = 'done'; m.head = 'وصلت — الرحلة انتهت'; return m; }
+    if (t.status === 'scheduled') {
+      const mins = Math.round((t.scheduledAt - Date.now()) / 60000);
+      m.head = 'الباص هيتحرك الساعة ' + t.time;
+      m.big = mins > 0 ? '<span class="eta-pre">بعد</span> ' + bigMins(mins) : '<b>في أي لحظة</b>';
+      return m;
+    }
+    if (t.status === 'at_start') {
+      m.tone = 'blue';
+      m.head = 'الباص جاهز للانطلاق';
+      m.big = '<b>في بداية الخط</b>';
+      if (eligible && !draft.pickMode && !draft.locating) m.action = READY_BTN(t.id);
+      return m;
+    }
+
+    // en route
+    if (draft.locating === t.id) { m.head = 'جاري التحقق من موقعك…'; return m; }
+    if (draft.pickMode === t.id) { m.head = 'اضغط على الخط الملوّن في الخريطة لتحديد مكانك'; return m; }
+
+    if (pk && pk.status === 'boarding') { m.tone = 'now'; m.head = 'الباص وصل — اركب!'; m.big = '<b>الآن</b>'; return m; }
+    if (pk && pk.status === 'skipped') { m.tone = 'bad'; m.head = 'السواق معتذر — مش هيقف عندك'; return m; }
+    if (pk && pk.status === 'passed') { m.tone = 'bad'; m.head = 'الباص عدّى مكانك'; return m; }
+    if (pk && pk.status === 'boarded') {
+      const end = MB.etaToProgress(t, 1);
+      m.tone = 'ok';
+      m.head = 'هتوصل ' + ends.to + ' الساعة';
+      m.big = end === null ? '' : '<b>' + clockIn(end) + '</b>';
+      m.sub = end === null ? '' : 'بعد ' + minsWord(end);
+      m.chips = late ? m.chips : [];
+      return m;
+    }
+    if (pkOpen) {
+      const mins = MB.etaToPickup(t, pk);
+      if (mins === null) { m.tone = 'bad'; m.head = 'الباص عدّى مكانك'; return m; }
+      m.tone = mins <= 3 ? 'soon' : 'ok';
+      m.head = mins <= 3 ? 'جهّز نفسك — الباص قرّب' : 'الباص هيوصلك بعد';
+      m.big = bigMins(mins);
+      m.sub = '(' + clockIn(mins) + ')';
+      dist(pk.progress);
+      return m;
+    }
+
+    // no Ready yet
+    if (back) {
+      const mine = snapMe && pos && snapMe.progress >= pos.progress - 0.005 ? MB.etaToProgress(t, snapMe.progress) : null;
+      if (mine !== null) { m.tone = 'ok'; m.head = 'الباص هيوصلك بعد'; m.big = bigMins(mine); m.sub = '(' + clockIn(mine) + ')'; dist(snapMe.progress); return m; }
+      const end = MB.etaToProgress(t, 1);
+      m.head = 'الباص هيوصل ' + ends.to + ' بعد';
+      m.big = end === null ? '' : bigMins(end);
+      m.sub = end === null ? '' : '(' + clockIn(end) + ')';
+      return m;
+    }
+    const near = snapMe && pos && snapMe.progress >= pos.progress - 0.005 ? MB.etaToProgress(t, snapMe.progress) : null;
+    if (near !== null) {
+      m.tone = 'ok';
+      m.head = 'الباص هيوصلك بعد';
+      m.big = bigMins(near);
+      m.sub = '(' + clockIn(near) + ')';
+      dist(snapMe.progress);
+    } else {
+      m.head = eligible ? 'اضغط Ready وتظهر للسواق' : 'الباص ماشي على الخط';
+      m.chips.unshift('الباص عند ' + Math.round(m.busP * 100) + '% من الخط');
+    }
+    if (eligible) m.action = READY_BTN(t.id);
+    else m.sub = 'سجّل في الرحلة عشان تقدر تطلب الباص';
+    return m;
+  }
+
+  function etaStripHtml(m, ends) {
+    const pct = (p) => (Math.max(0, Math.min(1, p)) * 100).toFixed(1);
+    return '<div class="eta-strip">' +
+      '<div class="eta-track">' +
+        '<i class="eta-fill" style="width:' + pct(m.busP) + '%"></i>' +
+        '<span class="eta-bus" style="right:' + pct(m.busP) + '%">🚌</span>' +
+        (m.meP !== null ? '<span class="eta-me" style="right:' + pct(m.meP) + '%">📍</span>' : '') +
+      '</div>' +
+      '<div class="eta-ends"><span>' + esc(ends.from) + '</span><span>' + esc(ends.to) + '</span></div>' +
+    '</div>';
+  }
+
+  // the markup of everything except the moving bus (so a repaint only moves the bus when nothing else changed)
+  function etaInnerHtml(m, ends) {
+    return '<div class="eta-head">' + esc(m.head) + '</div>' +
+      (m.big ? '<div class="eta-big">' + m.big + (m.sub ? ' <span class="eta-sub">' + esc(m.sub) + '</span>' : '') + '</div>'
+        : (m.sub ? '<div class="eta-sub-only">' + esc(m.sub) + '</div>' : '')) +
+      (m.chips.length ? '<div class="eta-chips">' + m.chips.map((c) => '<span class="eta-chip">' + esc(c) + '</span>').join('') + '</div>' : '') +
+      etaStripHtml(m, ends) +
+      (m.action ? '<div class="eta-act">' + m.action + '</div>' : '');
+  }
+
+  function etaCardHtml(s, t) {
+    const m = etaModel(s, t);
+    return '<div class="eta-card tone-' + m.tone + '" data-live="etacard" data-trip="' + t.id + '">' + etaInnerHtml(m, endNames(t)) + '</div>';
+  }
+
+  // once a second: rebuild only when the text changed (so a button is never swapped under a finger), otherwise just glide the bus
+  function paintEtaCard(el, t) {
+    const m = etaModel(MB.state, t);
+    const html = etaInnerHtml(m, endNames(t)).replace(/(<i class="eta-fill" style="width:)[^"]*|(<span class="eta-bus" style="right:)[^"]*/g, '$1$2');
+    if (el._k !== html) {
+      el._k = html;
+      el.className = 'eta-card tone-' + m.tone;
+      el.innerHTML = etaInnerHtml(m, endNames(t));
+      return;
+    }
+    const fill = el.querySelector('.eta-fill'), bus = el.querySelector('.eta-bus');
+    const p = (Math.max(0, Math.min(1, m.busP)) * 100).toFixed(1) + '%';
+    if (fill) fill.style.width = p;
+    if (bus) bus.style.right = p;
+  }
+
   function etaRowsHtml(t) {
     const pk = myPk(MB.state, t.id);
     const ends = endNames(t);
@@ -442,13 +590,10 @@
   }
 
   // ---------- Views ----------
+  // the Ready box only shows while a Ready request is in progress; the main button lives in the ETA card
   function readyBoxHtml(s, t) {
     if (t.direction === 'back') return '';
     const pk = myPk(s, t.id);
-    const isBooked = !!bookingFor(s, t.id);
-    const isRunning = (t.status === 'at_start' || t.status === 'en_route');
-    const eligible = isBooked && isRunning;
-
     let body;
     if (pk && (pk.status === 'waiting' || pk.status === 'accepted')) {
       body = '<div class="row"><span class="grow">' + pkChip(pk) + '</span>' +
@@ -461,20 +606,8 @@
       body = '<p style="margin:0 0 8px;font-weight:700">اضغط على الخط الملوّن في الخريطة لتحديد مكان وقوفك بالضبط:</p>' +
         '<div class="row"><button class="btn sm" type="button" data-act="ready-demo" data-trip="' + t.id + '">محاكاة وقوفي على الخط قدّام الباص</button>' +
         '<button class="btn sec sm" type="button" data-act="pick-cancel" data-trip="' + t.id + '">إلغاء</button></div>';
-    } else if (eligible) {
-      body = (pk ? '<div class="row" style="margin-bottom:8px"><span class="grow">' + pkChip(pk) + '</span></div>' : '') +
-        '<div class="row">' +
-          '<span class="grow mute" style="font-size:13px">أنت لن تظهر للسائق إلا عندما تقف على مسار الخط وتضغط هذا الزر بنفسك:</span>' +
-          '<button class="btn" type="button" data-act="ready" data-trip="' + t.id + '">أنا واقف على الخط — جاهز (Ready)</button>' +
-        '</div>';
     } else {
-      const reason = !isBooked
-        ? 'سجّل في رحلة الذهاب أولاً، وعندما تقف على الخط اضغط الزر بنفسك لتظهر للسائق.'
-        : 'أنت غير ظاهر للسائق حالياً — عندما تبدأ الرحلة وتقف على مسار الخط، اضغط الزر بنفسك.';
-      body = '<div class="row">' +
-        '<span class="grow mute" style="font-size:13px">' + reason + '</span>' +
-        '<button class="btn" type="button" disabled>أنا واقف على الخط — جاهز (Ready)</button>' +
-      '</div>';
+      return '';
     }
     return '<div class="ready-box"><h4>زر الجاهزية (Ready) — إشعار السائق بوقوفك على الخط</h4>' + body + '</div>';
   }
@@ -567,7 +700,6 @@
     const drv = MB.drv[t.driverId] || { name: '—' };
     const bus = MB.bus[t.busId] || { plate: '—' };
     const pk = myPk(s, t.id);
-    const pkLive = !!pk && (pk.status === 'waiting' || pk.status === 'accepted' || pk.status === 'boarding');
     const ends = endNames(t);
     const lastLink = s.sharedLinks.filter((l) => l.tripId === t.id).pop();
     const altTrip = nextTripFor(s, t);
@@ -607,18 +739,7 @@
             statusBadge(t) +
           '</div>' +
 
-          '<div class="eta-hero">' +
-            '<div class="eta-hero-main">' +
-              '<span class="mute">' + (pkLive ? 'الوصول لمكانك للركوب' : 'الوقت المتبقي / موعد الرحلة') + '</span>' +
-              '<div class="eta-big" data-live="etabig" data-trip="' + t.id + '">' + etaBigHtml(t) + '</div>' +
-            '</div>' +
-            '<div class="eta-hero-sub">' +
-              '<span>نهاية الخط (' + esc(ends.to) + '):</span> ' +
-              '<b data-live="endeta" data-trip="' + t.id + '">' + esc(endText(t)) + '</b>' +
-            '</div>' +
-          '</div>' +
-
-          '<div data-live="stepper" data-trip="' + t.id + '">' + stepperHtml(t) + '</div>' +
+          etaCardHtml(s, t) +
 
           readyBoxHtml(s, t) +
 
@@ -1103,13 +1224,9 @@
     document.querySelectorAll('[data-live="endeta"]').forEach((el) => {
       el.textContent = endText(trip(el.dataset.trip));
     });
-    document.querySelectorAll('[data-live="etabig"]').forEach((el) => {
+    document.querySelectorAll('[data-live="etacard"]').forEach((el) => {
       const t = trip(el.dataset.trip);
-      if (t) el.innerHTML = etaBigHtml(t);
-    });
-    document.querySelectorAll('[data-live="stepper"]').forEach((el) => {
-      const t = trip(el.dataset.trip);
-      if (t) el.innerHTML = stepperHtml(t);
+      if (t) paintEtaCard(el, t);
     });
   }
 
