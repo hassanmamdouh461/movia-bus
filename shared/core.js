@@ -36,6 +36,13 @@
   ];
 
   const pad = (n) => String(n).padStart(2, '0');
+  // 12-hour clock for display: "08:30 صباحاً" / "01:00 مساءً" (times are still stored as 24-hour "HH:MM")
+  function fmt12(hm) {
+    const m = /^(\d{1,2}):(\d{2})/.exec(hm || '');
+    if (!m) return hm || '';
+    const h = +m[1];
+    return pad(h % 12 || 12) + ':' + m[2] + ' ' + (h < 12 ? 'صباحاً' : 'مساءً');
+  }
   function todayAt(h, m) { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime(); }
 
   function polyOf(trip) {
@@ -118,7 +125,7 @@
       sharedLinks: [],
       notifications: [
         { id: 'n1', ts: Date.now() - 600000, text: 'الحافلة اقتربت منك', read: false, kind: 'bus' },
-        { id: 'n2', ts: Date.now() - 3600000, text: 'تم تأكيد حجز رحلة خط شلبي 07:00', read: true, kind: 'booking' },
+        { id: 'n2', ts: Date.now() - 3600000, text: 'تم تأكيد حجز رحلة خط شلبي ' + fmt12('07:00'), read: true, kind: 'booking' },
       ],
       reports: [
         { id: 'p1', ts: Date.now() - 86400000, studentName: 'سارة علي',   category: 'تأخير',      text: 'الحافلة تأخرت 20 دقيقة عن الموعد.', status: 'open', assignee: '' },
@@ -358,11 +365,12 @@
       const k = state.pickups.find((x) => x.id === id);
       if (k && k.mine) this.notify('السواق هيقف لك — جهّز نفسك', 'bus');
     },
-    tripLabel(t) { const r = R[t.routeId]; return r.name + ' · ' + (t.direction === 'go' ? 'ذهاب' : 'عودة') + ' · ' + t.time; },
+    tripLabel(t) { const r = R[t.routeId]; return r.name + ' · ' + (t.direction === 'go' ? 'ذهاب' : 'عودة') + ' · ' + fmt12(t.time); },
     statusLabel: { scheduled: 'مجدولة', at_start: 'جاهزة للانطلاق', en_route: 'في الطريق', arrived: 'انتهت', cancelled: 'ملغاة' },
     newTripId() { return 't' + (Date.now().toString(36)); },
     notify(text, kind) { this.update((s) => s.notifications.unshift({ id: 'n' + Date.now() + Math.floor(Math.random() * 99), ts: Date.now(), text, read: false, kind: kind || 'info' })); },
-    fmtTime(ts) { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); },
+    fmt12,
+    fmtTime(ts) { const d = new Date(ts); return fmt12(pad(d.getHours()) + ':' + pad(d.getMinutes())); },
   };
 
   // engine: arrive at the end, bus reaches accepted pickups -> pause to board, passing waiting ones -> missed

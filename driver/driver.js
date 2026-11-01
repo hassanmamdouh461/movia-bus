@@ -298,7 +298,7 @@
     const route = MB.R[trip.routeId] || {};
     $('tripTitle').textContent = trip.status === 'arrived' && idx === list.length - 1
       ? 'جدول اليوم خلص (' + list.length + ' رحلات)'
-      : 'رحلة ' + (idx + 1) + ' من ' + list.length + ' · ' + trip.time + ' · ' + (route.name || '') + ' (' + (trip.direction === 'go' ? 'ذهاب' : 'عودة') + ')';
+      : 'رحلة ' + (idx + 1) + ' من ' + list.length + ' · ' + MB.fmt12(trip.time) + ' · ' + (route.name || '') + ' (' + (trip.direction === 'go' ? 'ذهاب' : 'عودة') + ')';
     const plate = (MB.bus[trip.busId] || {}).plate || '';
     $('tripMeta').textContent = 'حافلة: ' + plate + ' · المسجّلون: ' + trip.booked;
     $('chatSub').textContent = MB.tripLabel(trip);
@@ -341,7 +341,7 @@
       tone = 'blue'; main = 'جاهز للانطلاق'; sub = 'اضغط «ابدأ الرحلة» عند التحرك';
     } else if (trip.status === 'scheduled') {
       const mins = Math.round((trip.scheduledAt - Date.now()) / 60000);
-      main = 'لم تبدأ'; sub = 'موعد ' + trip.time + (mins > 0 ? ' · بعد ' + fmtWhen(mins) : ' · حان الموعد');
+      main = 'لم تبدأ'; sub = 'موعد ' + MB.fmt12(trip.time) + (mins > 0 ? ' · بعد ' + fmtWhen(mins) : ' · حان الموعد');
     } else {
       tone = 'done'; main = 'الرحلة انتهت ✓'; sub = '';
     }
@@ -609,7 +609,7 @@
       return '<div class="drv-sched-item ' + cls + '">' +
         '<span class="drv-sched-num">' + (i + 1) + '</span>' +
         '<div class="drv-sched-main">' +
-          '<strong>' + esc(t.time) + ' · ' + esc(r.name || '') + ' (' + dir + ')</strong>' +
+          '<strong>' + esc(MB.fmt12(t.time)) + ' · ' + esc(r.name || '') + ' (' + dir + ')</strong>' +
         '</div>' +
         '<span class="drv-sched-tag">' + stateTxt + '</span>' +
       '</div>';
@@ -681,7 +681,7 @@
     });
     const next = currentTrip();
     toastUndo(next && next.status !== 'arrived'
-      ? 'تم إنهاء الرحلة — الرحلة الجاية ' + next.time
+      ? 'تم إنهاء الرحلة — الرحلة الجاية ' + MB.fmt12(next.time)
       : 'تم إنهاء الرحلة — خلّصت جدول اليوم ✓', () => {
       if (driverTrips().some((z) => z.status === 'en_route')) return toast('مش ممكن التراجع — رحلة تانية بدأت');
       MB.update((s) => {

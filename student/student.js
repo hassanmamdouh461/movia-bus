@@ -150,7 +150,7 @@
   }
   function etaText(t) {
     if (!t) return '—';
-    if (t.status === 'scheduled') return 'الموعد ' + t.time;
+    if (t.status === 'scheduled') return 'الموعد ' + MB.fmt12(t.time);
     if (t.status === 'at_start') return 'في بداية الخط';
     if (t.status === 'arrived') return 'وصلت';
     if (t.status === 'cancelled') return 'ملغاة';
@@ -234,7 +234,7 @@
     if (t.status === 'arrived') { m.tone = 'done'; m.head = 'وصلت — الرحلة انتهت'; return m; }
     if (t.status === 'scheduled') {
       const mins = Math.round((t.scheduledAt - Date.now()) / 60000);
-      m.head = 'الباص هيتحرك الساعة ' + t.time;
+      m.head = 'الباص هيتحرك الساعة ' + MB.fmt12(t.time);
       m.big = mins > 0 ? '<span class="eta-pre">بعد</span> ' + bigMins(mins) : '<b>في أي لحظة</b>';
       return m;
     }
@@ -645,7 +645,7 @@
       const chips = list.map((x) => {
         const isCur = activeTrip && activeTrip.id === x.id;
         return '<button type="button" class="ret-chip' + (isCur ? ' on' : '') + '" data-act="view-trip" data-trip="' + x.id + '">' +
-          '<b>' + esc(MB.R[x.routeId].name) + ' · ' + esc(x.time) + '</b>' +
+          '<b>' + esc(MB.R[x.routeId].name) + ' · ' + esc(MB.fmt12(x.time)) + '</b>' +
           '<span>' + esc(MB.bus[x.busId].plate) + '</span>' +
         '</button>';
       }).join('');
@@ -662,7 +662,7 @@
       return '<div class="my-trip-bar">' +
         '<div class="my-trip-info">' +
           '<span class="badge ok">✓ مسجّل</span>' +
-          '<b>' + esc(MB.R[curT.routeId].name) + ' · الساعة ' + esc(curT.time) + '</b>' +
+          '<b>' + esc(MB.R[curT.routeId].name) + ' · الساعة ' + esc(MB.fmt12(curT.time)) + '</b>' +
         '</div>' +
         '<div class="my-trip-acts">' +
           '<button class="btn sec sm" type="button" data-act="toggle-picker">تغيير الميعاد</button>' +
@@ -684,7 +684,7 @@
       '</div>';
     } else if (missedEntry) {
       const mt = trip(missedEntry.tripId);
-      headerHtml = '<div class="dir-note bad"><b>فاتتك الرحلة' + (mt ? ' (' + esc(MB.R[mt.routeId].name) + ' · ' + esc(mt.time) + ')' : '') + '</b></div>';
+      headerHtml = '<div class="dir-note bad"><b>فاتتك الرحلة' + (mt ? ' (' + esc(MB.R[mt.routeId].name) + ' · ' + esc(MB.fmt12(mt.time)) + ')' : '') + '</b></div>';
     } else {
       headerHtml = '<div class="dir-note"><b>اختر رحلة الذهاب للتسجيل (الحد الأقصى رحلة واحدة):</b></div>';
     }
@@ -696,7 +696,7 @@
       const isCur = activeTrip && activeTrip.id === x.id;
       return '<div class="dir-row' + (isCur ? ' on' : '') + '">' +
         '<div class="dir-row-info" data-act="view-trip" data-trip="' + x.id + '">' +
-          '<b>' + esc(MB.R[x.routeId].name) + ' — الساعة ' + esc(x.time) + '</b>' +
+          '<b>' + esc(MB.R[x.routeId].name) + ' — الساعة ' + esc(MB.fmt12(x.time)) + '</b>' +
           '<div class="meta">' + x.booked + ' مسجّل · من ' + esc(MB.R[x.routeId].fromName) + '</div>' +
         '</div>' +
         '<div class="dir-row-acts">' + act + '</div>' +
@@ -857,7 +857,7 @@
     const notifHtml = list.map((n) => {
       const alt = n.altTripId ? trip(n.altTripId) : null;
       const altBtn = alt && !bookingFor(s, alt.id)
-        ? '<button class="btn sm" style="margin-top:6px" type="button" data-act="book" data-trip="' + alt.id + '">سجّل في البديل (' + esc(alt.time) + ')</button>'
+        ? '<button class="btn sm" style="margin-top:6px" type="button" data-act="book" data-trip="' + alt.id + '">سجّل في البديل (' + esc(MB.fmt12(alt.time)) + ')</button>'
         : '';
       return '<div class="trip-row" style="align-items:flex-start;flex-direction:column">' +
         '<div class="row" style="width:100%"><span class="badge ' + (KIND_CLS[n.kind] || '') + '">' + esc(KIND_LABEL[n.kind] || 'إشعار') + '</span><span class="mute" style="margin-right:auto">' + MB.fmtTime(n.ts) + '</span></div>' +

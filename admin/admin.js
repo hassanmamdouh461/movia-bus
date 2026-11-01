@@ -10,8 +10,8 @@
   const dayKey = (ts) => { const d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
   const todayKey = () => dayKey(Date.now());
   const at = (day, hm) => new Date(day + 'T' + hm + ':00').getTime();
-  const hhmm = (ts) => { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
-  const hhmmss = (ts) => { const d = new Date(ts); return hhmm(ts) + ':' + pad(d.getSeconds()); };
+  const hhmm = (ts) => { const d = new Date(ts); return MB.fmt12(pad(d.getHours()) + ':' + pad(d.getMinutes())); };
+  const hhmmss = (ts) => { const d = new Date(ts), h = d.getHours(); return pad(h % 12 || 12) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + ' ' + (h < 12 ? 'صباحاً' : 'مساءً'); };
   const dirLabel = (d) => (d === 'go' ? 'ذهاب' : 'عودة');
   const lineLabel = (r) => (r && r.fromName && r.toName ? r.fromName + ' → ' + r.toName : r ? r.name : '—');
   const routeName = (id) => lineLabel(MB.R[id]);
@@ -20,7 +20,7 @@
   const drvName = (id) => (MB.drv[id] ? MB.drv[id].name : '—');
   const plateOf = (id) => (MB.bus[id] ? MB.bus[id].plate : '—');
   const busNo = (t) => (MB.bus[t.busId] ? MB.bus[t.busId].plate.split(' ').pop() : '—');
-  const titleOf = (t) => routeName(t.routeId) + ' · ' + dirLabel(t.direction) + ' · ' + t.time;
+  const titleOf = (t) => routeName(t.routeId) + ' · ' + dirLabel(t.direction) + ' · ' + MB.fmt12(t.time);
   const dayTrips = (day) => MB.state.trips.filter((t) => dayKey(t.scheduledAt) === day).sort((a, b) => a.scheduledAt - b.scheduledAt);
   const tripsToday = () => dayTrips(todayKey());
   const fillPct = (t) => (t.capacity ? Math.round((t.booked / t.capacity) * 100) : 0);
@@ -640,7 +640,7 @@
     if (kind === 'punct') {
       const rows = trips.filter((t) => t.status === 'arrived' && t.startedAt).map((t) => {
         const delay = Math.round((t.startedAt - t.scheduledAt) / 60000);
-        return [titleOf(t), dayKey(t.scheduledAt), t.time, hhmm(t.startedAt), delay, delay <= 5 ? 'نعم' : 'لا'];
+        return [titleOf(t), dayKey(t.scheduledAt), MB.fmt12(t.time), hhmm(t.startedAt), delay, delay <= 5 ? 'نعم' : 'لا'];
       });
       return { name: 'punctuality', head: ['الرحلة', 'التاريخ', 'موعد الجدول', 'وقت البدء الفعلي', 'التأخير (دقيقة)', 'في الموعد (حتى 5 دقائق)'], rows };
     }
