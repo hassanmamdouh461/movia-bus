@@ -429,6 +429,7 @@
     if (!t || (t.status !== 'scheduled' && t.status !== 'at_start')) return toast('التسجيل غير متاح لهذه الرحلة حالياً');
     const existingHere = bookingFor(s, tid);
     if (existingHere && !isBookingMissed(s, existingHere)) return toast('أنت مسجّل في هذه الرحلة بالفعل');
+    if (!existingHere && t.capacity && t.booked >= t.capacity) return toast('الرحلة دي ممتلئة — اختار رحلة تانية');
     const curGo = activeGoBooking(s);
     const switched = !!(curGo && curGo.tripId !== tid);
     MB.update((st) => {
@@ -440,8 +441,9 @@
           if (bt && (bt.status === 'scheduled' || bt.status === 'at_start' || bt.status === 'en_route')) {
             releaseSeat(bt);
           }
+          const wasMissed = isBookingMissed(st, b);   // before my pickup is removed, or a passed/skipped one would read as a plain cancel
           st.pickups = (st.pickups || []).filter((k) => !(k.tripId === b.tripId && k.mine));
-          b.status = isBookingMissed(st, b) ? 'missed' : 'cancelled';
+          b.status = wasMissed ? 'missed' : 'cancelled';
         }
       });
       book(st, st.trips.find((x) => x.id === tid));
@@ -498,6 +500,7 @@
       return false;
     }
     MB.requestPickup(tid, lat, lng);
+    draft.follow = false;   // otherwise bus-follow fights the zoom to my spot
     draft.focusPk = true;
     draft.flyPk = true;
     draft.pickMode = null;
@@ -532,6 +535,8 @@
       },
       { timeout: 4000, maximumAge: 30000, enableHighAccuracy: false }
     );
+    // the permission prompt can sit unanswered: don't leave the card on "checking" forever
+    setTimeout(() => { if (draft.locating === tid) { draft.locating = null; draft.pickMode = tid; render(); } }, 9000);
   }
 
   function readyDemo(tid) {
@@ -565,7 +570,8 @@
     const raw = text == null ? (draft.chat[tid] || '') : text;
     const txt = String(raw).trim();
     const ct = chatTrip(MB.state);
-    if (!txt || !ct || ct.id !== tid || ct.status !== 'en_route') return;
+    if (!txt) return;
+    if (!ct || ct.id !== tid || ct.status !== 'en_route') { toast('المحادثة اتقفلت — الرحلة اتغيّرت'); render(); return; }
     MB.update((st) => st.chat.push({ id: uid('c'), tripId: tid, from: 'student', text: txt.slice(0, 300), ts: now() }));
     draft.chat[tid] = '';
     const input = document.getElementById('chatInput');
@@ -966,7 +972,7 @@
       if (draft.flyPk) {
         // animated zoom from the whole route down to my spot, and bring the map into view on phones
         draft.flyPk = false;
-        setTimeout(() => map.flyTo([pk.lat, pk.lng], 17, { duration: 1.2 }), 250);
+        setTimeout(() => { try { if (map._container && map._container.isConnected) map.flyTo([pk.lat, pk.lng], 17, { duration: 1.2 }); } catch (e) {} }, 250);
         try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
       } else {
         map.setView([pk.lat, pk.lng], 17, { animate: false });
@@ -1022,7 +1028,8 @@
         paintMyLoc();
         if (draft.wantMe && mapCtl && mapCtl.map) { draft.wantMe = false; mapCtl.map.flyTo([draft.myLoc.lat, draft.myLoc.lng], 16, { duration: 1 }); }
       },
-      () => {
+      (err) => {
+        if (err && err.code !== 1) return;   // a timeout or a weak fix is temporary: keep watching, only a denied permission ends it
         if (geo.watch != null) navigator.geolocation.clearWatch(geo.watch);
         geo.watch = null;
         draft.wantMe = false;

@@ -213,6 +213,16 @@
   function confirmPublish() {
     if (!draft) return;
     if (draft.some((d) => !d.removed && !/^\d{2}:\d{2}$/.test(d.time || ''))) return toast('أدخل وقتاً صحيحاً لكل رحلة', true);
+    // one bus or driver cannot take two rows at the same time
+    const seenAt = {};
+    for (const d of draft) {
+      if (d.removed) continue;
+      for (const key of ['busId:' + d.busId, 'driverId:' + d.driverId]) {
+        const id = d.time + '|' + key;
+        if (seenAt[id]) return toast(key.indexOf('bus') === 0 ? 'نفس الحافلة في رحلتين بنفس الموعد' : 'نفس السائق في رحلتين بنفس الموعد', true);
+        seenAt[id] = 1;
+      }
+    }
     const day = todayKey();
     const cancelled = [];
     let added = 0, kept = 0;
@@ -313,7 +323,7 @@
               '<button class="btn sm ok" data-act="pubConfirm">تأكيد النشر الآن</button>' +
             '</div>'
           : '') +
-        (draft.length ? table(['الوقت', 'الخط والاتجاه', 'السائق', 'الحافلة (السعة)', 'التسجيل', 'الحالة', 'إجراءات'], rows) : empty('لا توجد رحلات لليوم. اضغط "+ إضافة رحلة جديدة".')) +
+        (draft.length ? table(['الوقت', 'الخط والاتجاه', 'السائق', 'الحافلة (السعة)', 'التسجيل', 'الحالة', 'إجراءات'], rows) : '<p class="adm-note">لو دي أول مرة تفتح النهارده: اضغط «إعادة ضبط الديمو» فوق عشان الجدول يتجهّز ليوم النهارده.</p>' + empty('لا توجد رحلات لليوم. اضغط "+ إضافة رحلة جديدة".')) +
         '<p class="adm-note">يمكنك تعديل الوقت مباشرة أو إضافة حافلة أو حذف رحلة لليوم، ثم ضغط «تأكيد نشر الجدول» لاعتماد كافة التغييرات دفعة واحدة.</p>' +
       '</div>';
   }
@@ -570,7 +580,7 @@
   }
 
   function heatPoints() {
-    const live = (MB.state.pickups || []).filter((k) => k && typeof k.lat === 'number').map((k) => {
+    const live = (MB.state.pickups || []).filter((k) => { const tr = k && MB.trip(k.tripId); return k && typeof k.lat === 'number' && tr && dayKey(tr.scheduledAt) === todayKey(); }).map((k) => {
       const tr = MB.trip(k.tripId);
       return { lat: k.lat, lng: k.lng, routeId: tr ? tr.routeId : null };
     });

@@ -229,16 +229,17 @@
     return n ? 'طالب بعد ' + (n.eta < 1 ? 'أقل من دقيقة' : n.eta + ' د') : '';
   }
 
+  let trailReset = false;
   function paintBus(trip) {
     if (!map || !routeObj) return;
     const pos = trip.status === 'en_route' ? MB.position(trip) : null;
     if (!pos) {
       camBus = null;
       if (dbus) { dbus.remove(); dbus = null; }
-      routeObj.done.setLatLngs([]);
-      routeObj.line.setLatLngs(routePoly);
+      if (!trailReset) { routeObj.done.setLatLngs([]); routeObj.line.setLatLngs(routePoly); trailReset = true; }   // once, not every animation frame
       return;
     }
+    trailReset = false;
     const ll = [pos.lat, pos.lng];
     if (!dbus) dbus = MBMap.bus(map, ll);
     dbus.move(ll, MBMap.headingAt(routePoly, pos.progress));
@@ -591,7 +592,7 @@
     const box = $('drvSchedule');
     if (!box) return;
     const list = driverTrips();
-    const sig = (cur ? cur.id : '') + '|' + list.map((t) => t.id + t.status).join(',');
+    const sig = (cur ? cur.id : '') + '|' + list.map((t) => t.id + t.status + t.time + t.routeId + t.direction).join(',');
     if (sig === schedSig) return;
     schedSig = sig;
     if (!list.length) {
@@ -678,6 +679,7 @@
   }
 
   function endTrip(t) {
+    const endedAt = Date.now();
     MB.update((s) => {
       const x = s.trips.find((z) => z.id === t.id);
       if (x) x.status = 'arrived';
@@ -689,7 +691,7 @@
       if (driverTrips().some((z) => z.status === 'en_route')) return toast('مش ممكن التراجع — رحلة تانية بدأت');
       MB.update((s) => {
         const x = s.trips.find((z) => z.id === t.id);
-        if (x && x.status === 'arrived') x.status = 'en_route';
+        if (x && x.status === 'arrived') { x.status = 'en_route'; x.pausedTotal = (x.pausedTotal || 0) + (Date.now() - endedAt); }   // the bus stood still meanwhile
       });
       toast('رجعت الرحلة شغالة ✓');
     });

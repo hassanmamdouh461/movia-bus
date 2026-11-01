@@ -97,18 +97,25 @@
   // ---------- watchers: what each side sees, and what the server receives ----------
   const seen = { stuPk: null, srvT: 0, drvPk: null, drvAlert: false, drvPin: 0, tripStatus: null, chat: new Set(), drvChat: new Set() };
   let tReady = 0;
+  let polling = false, polledOnce = false;
   async function pollServer() {
+    if (polling) return;   // slow answers must not pile up
+    polling = true;
     try {
+      const first = !polledOnce;   // what is already in the room is history, not news
       const d = await fetch('/api/sync?room=how&since=' + seen.srvT, { cache: 'no-store' }).then((r) => r.json());
       d.docs.forEach((x) => {
         seen.srvT = Math.max(seen.srvT, x.t);
         if (x.d) return;
         let j; try { j = JSON.parse(x.j); } catch (e) { return; }
+        if (first) { if (x.k === 'chat') seen.chat.add(x.id); if (x.k === 'pickups') seen.srvPk = x.id; if (x.k === 'trips' && j.id === 't1') seen.tripStatus = j.status; return; }
         if (x.k === 'pickups' && !seen.srvPk) { seen.srvPk = x.id; log('srv', 'وصله طلب ركوب جديد (مكان الطالب على الخط: ' + Math.round(j.progress * 100) + '% من المسار) — بيتخزّن في قاعدة البيانات'); }
         if (x.k === 'trips' && j.id === 't1' && j.status !== seen.tripStatus) { if (seen.tripStatus !== null) log('srv', 'حالة الرحلة اتغيّرت: ' + j.status); seen.tripStatus = j.status; }
         if (x.k === 'chat' && !seen.chat.has(x.id)) { seen.chat.add(x.id); log('srv', 'وصلته رسالة من ' + (j.from === 'driver' ? 'السواق' : 'الطالب') + ': «' + j.text + '»'); }
       });
+      polledOnce = true;
     } catch (e) {}
+    polling = false;
   }
   function watch() {
     const s = S(), d = D();
