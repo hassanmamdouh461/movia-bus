@@ -616,6 +616,14 @@
 
   // ---------- actions (delegated) ----------
   const ACTIONS = {
+    // back to the starting demo data on every device (bookings, Ready requests, chat, notifications...)
+    demoReset: () => {
+      if (!window.confirm('إعادة ضبط بيانات العرض التجريبي؟\nسيتم مسح كل الحجوزات وطلبات Ready والمحادثات والإشعارات على كل الأجهزة، والرجوع لبيانات البداية.')) return;
+      draft = null;
+      polDraft = null;
+      MB.reset();
+      toast(MB.online ? 'تمت إعادة الضبط على كل الأجهزة ✓' : 'تمت إعادة الضبط على هذا الجهاز — غير متصل بالسيرفر حالياً', !MB.online);
+    },
     pubRemove: ({ i }) => {
       const d = draft[+i];
       if (!d) return;
@@ -696,7 +704,8 @@
   });
 
   // ---------- boot ----------
-  $('#nav').innerHTML = Object.keys(VIEWS).map((k) => '<a href="#' + k + '" data-nav="' + k + '">' + esc(VIEWS[k].label) + '</a>').join('');
+  $('#nav').innerHTML = Object.keys(VIEWS).map((k) => '<a href="#' + k + '" data-nav="' + k + '">' + esc(VIEWS[k].label) + '</a>').join('') +
+    '<button class="btn sm bad nav-reset" type="button" data-act="demoReset">إعادة ضبط بيانات العرض</button>';
   window.addEventListener('hashchange', go);
   MB.subscribe(onState);
   setInterval(() => {
