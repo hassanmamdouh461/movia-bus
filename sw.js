@@ -2,7 +2,7 @@
    Network first so the demo always shows the latest deploy; the cache is only a fallback
    for a flaky connection. The sync API and map tiles are never cached (they must be live). */
 
-const CACHE = 'lotus-bus-v1';
+const CACHE = 'lotus-bus-v2';
 const SHELL = [
   '/', '/student/', '/driver/', '/admin/',
   '/shared/core.js', '/shared/mb.css', '/shared/lum-crest.svg', '/shared/lum-logo.svg',
@@ -33,7 +33,7 @@ self.addEventListener('fetch', (e) => {
   if (!sameOrigin && url.hostname !== 'cdnjs.cloudflare.com' && !url.hostname.endsWith('googleapis.com') && !url.hostname.endsWith('gstatic.com')) return;
 
   e.respondWith(
-    fetch(req).then((res) => {
+    fetch(req, sameOrigin ? { cache: 'no-cache' } : undefined).then((res) => {
       if (res.ok || res.type === 'opaque') {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
