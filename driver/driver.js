@@ -95,7 +95,7 @@
   function initMap() {
     if (typeof L === 'undefined') return;
     map = L.map('map', { zoomControl: true, scrollWheelZoom: false }).setView([28.11, 30.80], 12);
-    MBMap.addTiles(map, { night: true });
+    MBMap.addTiles(map);
     routeLayer = L.layerGroup().addTo(map);
     pinLayer = L.layerGroup().addTo(map);
     const takeOver = () => { lastTouchAt = Date.now(); if (focusMode === 'auto') { focusMode = 'manual'; updateFocusBtn(); } };

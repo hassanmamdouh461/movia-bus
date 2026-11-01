@@ -666,22 +666,9 @@ h1, h2, h3, strong {
   display: none;
 }
 
-/* calmer basemap: less colour, so the route and the pins stand out; dark one at night */
+/* calmer basemap: less colour, so the route and the pins stand out */
 .mb-tiles {
   filter: saturate(0.3) contrast(0.95) brightness(1.06);
-}
-
-.map-night .mb-tiles {
-  filter: invert(1) hue-rotate(180deg) saturate(0.45) brightness(0.82) contrast(0.92);
-}
-
-.map-night .leaflet-control-attribution {
-  background: rgba(0, 0, 0, 0.55);
-  color: #cbd5e1;
-}
-
-.map-night .leaflet-control-attribution a {
-  color: #93c5fd;
 }
 
 /* map buttons: follow the bus / my position / whole route */

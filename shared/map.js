@@ -1,5 +1,5 @@
 /* Lotus Bus - shared map pieces (window.MBMap). Needs Leaflet (window.L) loaded first.
-   One look for the student, driver and admin maps: calm basemap (dark at night when asked),
+   One look for the student, driver and admin maps: calm basemap,
    a route with a white outline + direction arrows, and the bus marker (bus icon, direction tip, small label). */
 (function () {
   'use strict';
@@ -7,23 +7,9 @@
   const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   const ATTR = '&copy; OpenStreetMap';
 
-  const isNight = (d) => { const h = (d || new Date()).getHours(); return h >= 19 || h < 5; };
-
-  /* OpenStreetMap tiles, calmed down with a CSS filter (see .mb-tiles in mb.css) so the route and the pins stand out;
-     with { night: true } the map turns dark after sunset, by itself */
-  function addTiles(map, opts) {
-    const L = window.L;
-    const o = Object.assign({ night: false }, opts);
-    L.tileLayer(TILES, { maxZoom: 19, attribution: ATTR, className: 'mb-tiles' }).addTo(map);
-    const apply = () => map.getContainer().classList.toggle('map-night', !!o.night && isNight());
-    apply();
-    if (o.night) {
-      const iv = setInterval(() => {
-        if (!map.getContainer().isConnected) { clearInterval(iv); return; }
-        apply();
-      }, 60000);
-    }
-    return { apply };
+  /* OpenStreetMap tiles, calmed down with a CSS filter (see .mb-tiles in mb.css) so the route and the pins stand out */
+  function addTiles(map) {
+    window.L.tileLayer(TILES, { maxZoom: 19, attribution: ATTR, className: 'mb-tiles' }).addTo(map);
   }
 
   /* ---- geometry ---- */
@@ -168,5 +154,5 @@
     };
   }
 
-  window.MBMap = { addTiles, route, bus, pointAt, headingAt, sliceBetween, bearing, isNight };
+  window.MBMap = { addTiles, route, bus, pointAt, headingAt, sliceBetween, bearing };
 })();
