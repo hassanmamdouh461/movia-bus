@@ -31,58 +31,6 @@ body {
   font-weight: 800;
 }
 
-.icon-btn {
-  appearance: none;
-  flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 1px solid var(--line-strong);
-  background: var(--card);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-/* ---- settings sheet (alerts, driving mode, test, reopen) ---- */
-.settings-sheet {
-  position: fixed;
-  top: 64px;
-  inset-inline-start: 12px;
-  z-index: 900;
-  width: min(320px, calc(100% - 24px));
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: 0 12px 32px rgba(4, 41, 89, 0.25);
-}
-
-.settings-sheet[hidden] {
-  display: none;
-}
-
-.set-row {
-  appearance: none;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  text-align: start;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.set-row[aria-pressed="false"] {
-  color: var(--mute);
-}
-
 /* ---- trip line: one line, the full schedule opens on tap ---- */
 .trip-line {
   appearance: none;
@@ -869,42 +817,6 @@ body {
   min-width: 0;
   padding: 0 9px;
   font-size: 11.5px;
-}
-
-/* ---- driving mode: bigger, fewer things ---- */
-body.driving #drvSchedule,
-body.driving .trip-line small,
-body.driving .trip-line .caret,
-body.driving #chatList,
-body.driving #chatToggle,
-body.driving #chatInputRow {
-  display: none;
-}
-
-body.driving .status-banner b {
-  font-size: 28px;
-}
-
-body.driving .status-banner span {
-  font-size: 16px;
-}
-
-body.driving .drv-map {
-  height: clamp(340px, 56vh, 560px);
-}
-
-body.driving .go-btn {
-  min-height: 64px;
-  font-size: 20px;
-}
-
-body.driving .req-d {
-  font-size: 26px;
-}
-
-body.driving .qchip {
-  min-height: 64px;
-  font-size: 17px;
 }
 
 /* ---- small phones ---- */

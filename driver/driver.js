@@ -227,11 +227,8 @@
 
   /* ---- state of the page ---- */
   const NEAR_END = 0.9;   // from here on the trip counts as "almost there": the end button becomes the main action
-  const DRIVING_KEY = 'mb_driver_driving';
-  let driving = false;
-  try { driving = localStorage.getItem(DRIVING_KEY) === '1'; } catch (e) {}
   let reqExpanded = false, chatSeenTs = Date.now(), chatVisible = false, stripSig = '', schedSig = '';
-  const reqLimit = () => (driving ? 2 : 3);
+  const reqLimit = () => 3;
 
   function tripProgress(trip) {
     const pos = trip.status === 'en_route' ? MB.position(trip) : null;
@@ -405,9 +402,7 @@
   }
 
   /* ---- driver-safety alerts: chime (Web Audio), Arabic voice, vibration, top banner ---- */
-  const ALERT_KEY = 'lotus_driver_alerts';
-  let alertsEnabled = true;
-  try { alertsEnabled = localStorage.getItem(ALERT_KEY) !== '0'; } catch (e) {}
+  const alertsEnabled = true;
   let audioCtx = null, audioReady = false, bannerTimer = null, voiceTimer = null;
 
   function getAudioCtx() {
@@ -530,13 +525,6 @@
       .sort((a, b) => a.dist - b.dist);
     if (!ahead.length || !alertsOn()) return;
     fireAlert(ahead[0], ahead.length - 1);
-  }
-
-  function renderAlertToggle() {
-    const b = $('alertToggle');
-    b.textContent = '🔔 تنبيهات الطلاب الجديدة: ' + (alertsEnabled ? 'تشغيل' : 'إيقاف');
-    b.setAttribute('aria-pressed', String(alertsEnabled));
-    if (!alertsEnabled) hideBanner();
   }
 
   function chatMsgs(trip) {
@@ -680,54 +668,7 @@
     });
   }
 
-  function reopenSchedule() {
-    MB.update((s) => {
-      s.trips.forEach((z) => {
-        if (z.driverId === driverId && z.status === 'arrived') {
-          z.status = 'scheduled';
-          z.startedAt = null;
-        }
-      });
-    });
-    toast('تمت إعادة فتح جدول اليوم للتجربة ✓');
-  }
-
-  function applyDriving() {
-    document.body.classList.toggle('driving', driving);
-    const b = $('drivingToggle');
-    b.textContent = '🚗 وضع القيادة: ' + (driving ? 'تشغيل' : 'إيقاف');
-    b.setAttribute('aria-pressed', String(driving));
-  }
-
   function bindActions() {
-    /* settings sheet: alerts, driving mode, test, reopen */
-    const sheet = $('settingsSheet'), sbtn = $('settingsBtn');
-    const closeSheet = () => { sheet.hidden = true; sbtn.setAttribute('aria-expanded', 'false'); };
-    sbtn.onclick = () => { sheet.hidden = !sheet.hidden; sbtn.setAttribute('aria-expanded', String(!sheet.hidden)); };
-    document.addEventListener('click', (e) => {
-      if (!sheet.hidden && !e.target.closest('#settingsSheet') && !e.target.closest('#settingsBtn')) closeSheet();
-    });
-    $('alertToggle').onclick = () => {
-      alertsEnabled = !alertsEnabled;
-      try { localStorage.setItem(ALERT_KEY, alertsEnabled ? '1' : '0'); } catch (e) {}
-      renderAlertToggle();
-      if (alertsEnabled) unlockAudio();
-    };
-    $('drivingToggle').onclick = () => {
-      driving = !driving;
-      try { localStorage.setItem(DRIVING_KEY, driving ? '1' : '0'); } catch (e) {}
-      applyDriving();
-      lastReqSig = '';
-      refresh();
-      setTimeout(() => map && map.invalidateSize(), 80);
-    };
-    /* test always fires (explicit action), with a fake 800 m request */
-    $('alertTest').onclick = () => {
-      unlockAudio();
-      closeSheet();
-      fireAlert({ dist: 800, eta: 2 }, 0);
-    };
-    $('reopenBtn').onclick = () => { closeSheet(); reopenSchedule(); };
     $('alertBanner').addEventListener('click', hideBanner);
 
     /* the full schedule opens from the trip line */
@@ -817,8 +758,6 @@
   initMap();
   renderDriverSelect();
   bindActions();
-  renderAlertToggle();
-  applyDriving();
   refresh();
   MB.subscribe(refresh);
   setInterval(refresh, 1000);
