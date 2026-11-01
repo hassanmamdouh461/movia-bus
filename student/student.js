@@ -630,10 +630,13 @@
   function dirTripsBoxHtml(s, activeTrip) {
     const dir = draft.dir || 'go';
     const actGo = activeGoBooking(s);
-    const missedEntry = !actGo && s.myBookings.slice().reverse().find((b) => {
+    // the "you missed it" banner is about the LATEST go booking only: once the student books another trip (even if he cancels it
+    // later) an older missed one must not come back
+    const lastGo = !actGo && s.myBookings.slice().reverse().find((b) => {
       const bt = trip(b.tripId);
-      return (!bt || bt.direction === 'go') && (b.status === 'missed' || (b.status === 'confirmed' && isBookingMissed(s, b)));
+      return !bt || bt.direction === 'go';
     });
+    const missedEntry = lastGo && (lastGo.status === 'missed' || (lastGo.status === 'confirmed' && isBookingMissed(s, lastGo))) ? lastGo : null;
 
     if (dir === 'back') {
       const list = s.trips
