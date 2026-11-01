@@ -89,7 +89,7 @@
   let lastTripId = null, lastPinSig = '', lastReqSig = '', lastChatSig = '';
   let knownPickups = null;
   // map focus: 'auto' keeps the bus and the nearest student in frame (only moves when it has to), 'manual' = the driver moved the map, 'all' = whole route
-  let focusMode = 'auto', lastFitKey = '', focusBtns = {};
+  let focusMode = 'auto', lastFitKey = '', focusBtns = {}, lastTouchAt = 0;
   let routeObj = null, routePoly = null, dbus = null, pinMarkers = {}, linkLine = null, linkLbl = null, lastTick = 0;
 
   function initMap() {
@@ -99,9 +99,10 @@
     routeLayer = L.layerGroup().addTo(map);
     pinLayer = L.layerGroup().addTo(map);
     linkLayer = L.layerGroup().addTo(map);
-    const takeOver = () => { if (focusMode === 'auto') { focusMode = 'manual'; updateFocusBtn(); } };
-    map.on('dragstart', takeOver);
-    map.getContainer().addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.leaflet-control-zoom')) takeOver(); });
+    const takeOver = () => { lastTouchAt = Date.now(); if (focusMode === 'auto') { focusMode = 'manual'; updateFocusBtn(); } };
+    map.on('dragstart drag', takeOver);
+    // a zoom we did not start ourselves (zoom buttons, pinch) means the driver took over
+    map.on('zoomstart', () => { if (performance.now() > camLockUntil) takeOver(); });
     // route end labels fade out when zoomed in close
     map.on('zoomend', () => map.getContainer().classList.toggle('zoomed-in', map.getZoom() >= 15));
     const FocusCtl = L.Control.extend({
@@ -142,10 +143,15 @@
     if (focusBtns.all) focusBtns.all.classList.toggle('on', focusMode === 'all');
   }
 
-  /* Auto focus: keeps the bus and the nearest student in frame, but only moves the map when it has to
-     (a new target, the bus leaves the middle of the view, or the right zoom changed by a whole level) -
-     in between the bus just glides across the map. With nobody ahead it follows the bus; while boarding it stays close. */
+  /* Auto focus = a camera that follows the bus like a navigation app.
+     Once a second we decide the zoom (and jump when the situation changes: boarding / a new nearest student / following);
+     every animation frame the camera glides towards its target, so the bus stays in the middle and nothing jumps.
+     The target is the bus alone, or - when the nearest student is close (<= 1.5 km) - the middle between the bus and him. */
+  let camBus = null, camTgt = null, camLockUntil = 0;
+
   function autoFocus(trip, force) {
+    // the driver moved the map: leave it alone for 8 s, then go back to following the bus
+    if (map && focusMode === 'manual' && Date.now() - lastTouchAt > 8000) { focusMode = 'auto'; lastFitKey = ''; updateFocusBtn(); force = true; }
     if (!map || focusMode !== 'auto' || trip.status !== 'en_route') return;
     const pos = MB.position(trip);
     if (!pos) return;
@@ -153,25 +159,37 @@
     const boarding = reqs.find((r) => r.k.status === 'boarding');
     const target = reqs.find((r) => r.k.status !== 'boarding');
     const bus = L.latLng(pos.lat, pos.lng);
-    const inner = map.getBounds().pad(-0.3);
+    let key, zWant;
+    camTgt = null;
     if (boarding) {
-      if (force || lastFitKey !== 'brd' || !inner.contains(bus)) {
-        lastFitKey = 'brd';
-        map.setView(bus, 17, { animate: true, duration: 0.8 });
-      }
-    } else if (target) {
+      key = 'brd'; zWant = 17;
+    } else if (target && target.dist <= 1500) {
       const tl = L.latLng(target.k.lat, target.k.lng);
-      const bounds = L.latLngBounds([bus, tl]);
-      const key = 'req|' + target.k.id;
-      const zWant = Math.min(17, map.getBoundsZoom(bounds, false, L.point(60, 60)));
-      if (force || key !== lastFitKey || Math.abs(map.getZoom() - zWant) >= 1 || !inner.contains(bus) || !inner.contains(tl)) {
-        lastFitKey = key;
-        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 17, animate: true, duration: 0.8 });
-      }
-    } else if (force || lastFitKey !== 'follow' || !inner.contains(bus) || Math.abs(map.getZoom() - 15) >= 1) {
-      lastFitKey = 'follow';
-      map.setView(bus, 15, { animate: true, duration: 0.8 });
+      key = 'req|' + target.k.id;
+      camTgt = tl;
+      // the zoom that fits the bus and the student, kept between 14 and 17
+      zWant = Math.max(14, Math.min(17, map.getBoundsZoom(L.latLngBounds([bus, tl]), false, L.point(70, 90))));
+    } else {
+      key = 'follow'; zWant = 15;
     }
+    const nowMs = performance.now();
+    const center = camTgt ? L.latLng((bus.lat + camTgt.lat) / 2, (bus.lng + camTgt.lng) / 2) : bus;
+    if (force || key !== lastFitKey) {
+      lastFitKey = key;
+      camLockUntil = nowMs + 900;   // set first: our own zoom must not look like the driver's
+      map.setView(center, zWant, { animate: true, duration: 0.8 });
+    } else if (Math.abs(map.getZoom() - zWant) >= 1) {
+      camLockUntil = nowMs + 450;
+      map.setZoom(zWant, { animate: true });
+    }
+  }
+
+  /* every frame: glide the camera towards the target (bus, or the middle between the bus and the nearest student) */
+  function followCamera() {
+    if (!map || focusMode !== 'auto' || !camBus || performance.now() < camLockUntil || map._animatingZoom) return;
+    const want = camTgt ? L.latLng((camBus[0] + camTgt.lat) / 2, (camBus[1] + camTgt.lng) / 2) : L.latLng(camBus[0], camBus[1]);
+    const c = map.getCenter(), k = 0.18;
+    map.setView(L.latLng(c.lat + (want.lat - c.lat) * k, c.lng + (want.lng - c.lng) * k), map.getZoom(), { animate: false });
   }
 
   function drawRoute(trip) {
@@ -234,6 +252,7 @@
     if (!map || !routeObj) return;
     const pos = trip.status === 'en_route' ? MB.position(trip) : null;
     if (!pos) {
+      camBus = null;
       if (dbus) { dbus.remove(); dbus = null; }
       routeObj.done.setLatLngs([]);
       routeObj.line.setLatLngs(routePoly);
@@ -243,6 +262,7 @@
     const ll = [pos.lat, pos.lng];
     if (!dbus) dbus = MBMap.bus(map, ll);
     dbus.move(ll, MBMap.headingAt(routePoly, pos.progress));
+    camBus = ll;
     const now = performance.now();
     if (now - lastTick < 250) return;
     lastTick = now;
@@ -281,6 +301,7 @@
     if (!map || !lastTrip) return;
     const t = MB.trip(lastTrip.id);
     if (t) paintBus(t);
+    followCamera();
   }
 
   function renderPill(trip) {
@@ -391,31 +412,6 @@
       const f = box.querySelector('.ds-fill'), b = box.querySelector('.ds-bus');
       if (f) f.style.width = bx;
       if (b) b.style.right = bx;
-    }
-  }
-
-  /* the nearest student, as a card on the map itself (hidden when there is nobody ahead) */
-  function renderNext(trip) {
-    const card = $('nextCard');
-    const pos = trip.status === 'en_route' ? MB.position(trip) : null;
-    const reqs = pos ? aheadRequests(trip) : [];
-    const boarding = reqs.find((r) => r.k.status === 'boarding');
-    const nearest = reqs.find((r) => r.k.status !== 'boarding');
-    if (!boarding && !nearest) { card.hidden = true; return; }
-    card.hidden = false;
-    card.classList.toggle('hot', !boarding);
-    if (boarding) {
-      $('nextLabel').textContent = 'واقف للركوب';
-      $('nextName').textContent = 'الطلاب بيركبوا دلوقتي';
-      $('nextWait').textContent = 'باقي ' + secsLeft(boarding.k) + ' ث';
-      $('etaNum').textContent = String(secsLeft(boarding.k));
-      $('etaUnit').textContent = 'ثانية';
-    } else {
-      $('nextLabel').textContent = 'أقرب طالب';
-      $('nextName').textContent = 'على بُعد ' + fmtDist(nearest.dist);
-      $('nextWait').textContent = 'هتقف له';
-      $('etaNum').textContent = nearest.eta < 1 ? '<1' : String(nearest.eta);
-      $('etaUnit').textContent = 'دقيقة';
     }
   }
 
@@ -682,7 +678,6 @@
     lastTrip = trip;
     paintBus(trip);
     autoFocus(trip);
-    renderNext(trip);
     renderStrip(trip);
     renderPins(trip);
     renderReqs(trip);
