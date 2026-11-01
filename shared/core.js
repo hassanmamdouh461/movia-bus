@@ -395,3 +395,8 @@
 
   window.MB = MB;
 })();
+
+/* Installable app (Add to Home Screen): register the service worker when served over http(s). */
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
