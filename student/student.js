@@ -196,8 +196,16 @@
 
   const READY_BTN = (tid) => '<button class="btn eta-action" type="button" data-act="ready" data-trip="' + tid + '">أنا واقف على الخط — جاهز (Ready)</button>';
 
+  // position on the strip: share of the real path length (not of the path points), so distances look right
+  const pathLenCache = {};
+  function xOf(poly, p) {
+    const key = poly.length + ':' + poly[0] + ':' + poly[poly.length - 1];
+    const total = pathLenCache[key] || (pathLenCache[key] = distAlong(poly, 0, 1));
+    return total ? Math.max(0, Math.min(1, distAlong(poly, 0, p) / total)) : p;
+  }
+
   // everything the card shows for this trip right now
-  function etaModel(s, t) {
+  function etaModelCore(s, t) {
     const ends = endNames(t);
     const poly = MB.polyOf(t);
     const pos = MB.position(t);
@@ -211,6 +219,7 @@
 
     if (t.status === 'en_route' && pos) m.busP = pos.progress;
     else if (t.status === 'arrived') m.busP = 1;
+    m.busX = xOf(poly, m.busP);
 
     // where I stand on the path: my pickup spot, else my live position when I'm on / near the line
     let snapMe = null;
@@ -283,10 +292,16 @@
       dist(snapMe.progress);
     } else {
       m.head = eligible ? 'اضغط Ready وتظهر للسواق' : 'الباص ماشي على الخط';
-      m.chips.unshift('الباص عند ' + Math.round(m.busP * 100) + '% من الخط');
+      m.chips.unshift('الباص عند ' + Math.round(m.busX * 100) + '% من الخط');
     }
     if (eligible) m.action = READY_BTN(t.id);
     else m.sub = 'سجّل في الرحلة عشان تقدر تطلب الباص';
+    return m;
+  }
+
+  function etaModel(s, t) {
+    const m = etaModelCore(s, t);
+    m.meX = m.meP === null ? null : xOf(MB.polyOf(t), m.meP);
     return m;
   }
 
@@ -294,9 +309,9 @@
     const pct = (p) => (Math.max(0, Math.min(1, p)) * 100).toFixed(1);
     return '<div class="eta-strip">' +
       '<div class="eta-track">' +
-        '<i class="eta-fill" style="width:' + pct(m.busP) + '%"></i>' +
-        '<span class="eta-bus" style="right:' + pct(m.busP) + '%">🚌</span>' +
-        (m.meP !== null ? '<span class="eta-me" style="right:' + pct(m.meP) + '%">📍</span>' : '') +
+        '<i class="eta-fill" style="width:' + pct(m.busX) + '%"></i>' +
+        '<span class="eta-bus" style="right:' + pct(m.busX) + '%">🚌</span>' +
+        (m.meX !== null ? '<span class="eta-me" style="right:' + pct(m.meX) + '%"></span>' : '') +
       '</div>' +
       '<div class="eta-ends"><span>' + esc(ends.from) + '</span><span>' + esc(ends.to) + '</span></div>' +
     '</div>';
@@ -328,7 +343,7 @@
       return;
     }
     const fill = el.querySelector('.eta-fill'), bus = el.querySelector('.eta-bus');
-    const p = (Math.max(0, Math.min(1, m.busP)) * 100).toFixed(1) + '%';
+    const p = (Math.max(0, Math.min(1, m.busX)) * 100).toFixed(1) + '%';
     if (fill) fill.style.width = p;
     if (bus) bus.style.right = p;
   }

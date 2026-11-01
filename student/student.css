@@ -460,30 +460,49 @@ body.track .subnav {
   transition: width 1s linear;
 }
 
-.eta-bus,
-.eta-me {
+.eta-bus {
   position: absolute;
   transform: translateX(50%);
   line-height: 1;
 }
 
 .eta-bus {
-  top: -11px;
+  top: -19px;
   font-size: 22px;
   transition: right 1s linear;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
+/* my spot: a dot sitting exactly on the line, with its label underneath */
 .eta-me {
-  top: 12px;
-  font-size: 18px;
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--tone);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 2px var(--tone);
+  transform: translate(50%, -50%);
+}
+
+.eta-me::after {
+  content: 'مكانك';
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--tone);
+  white-space: nowrap;
 }
 
 .eta-ends {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 22px;
+  margin-top: 30px;
   font-size: 11.5px;
   font-weight: 700;
   color: var(--mute);
