@@ -189,12 +189,13 @@
   const allOps = () => Object.keys(sync.shadow).map((key) => { const [k, id] = splitKey(key); return { k, id, j: sync.shadow[key] }; });
 
   async function api(method, qs, body) {
+    const text = body ? JSON.stringify(body) : undefined;
     const r = await fetch(API + (qs || '') + (ROOM ? (qs ? '&' : '?') + 'room=' + ROOM : ''), {
-      method, cache: 'no-store', keepalive: !!body,
+      method, cache: 'no-store', keepalive: !!text && text.length < 50000,   // browsers cap keepalive bodies at ~64 KB
       headers: body ? { 'content-type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
+      body: text,
     });
-    if (!r.ok) throw new Error('sync ' + r.status);
+    if (!r.ok) { const e = new Error('sync ' + r.status); e.status = r.status; throw e; }
     return r.json();
   }
 
@@ -207,8 +208,11 @@
         await api('POST', '', { ops: ops.slice(i, i + 300), reset: !!reset && i === 0 });
       }
     } catch (e) {
+      // a 4xx means the server rejected these docs: retrying the same body would block every later push
+      if (e && e.status >= 400 && e.status < 500) return;
       // not delivered: forget what we believed was synced so the next push sends it again
-      ops.forEach((o) => { delete sync.shadow[o.k + '|' + o.id]; });
+      // (a deleted doc is put back in the shadow so the delete is generated again)
+      ops.forEach((o) => { const key = o.k + '|' + o.id; if (o.del) sync.shadow[key] = ''; else delete sync.shadow[key]; });
       sync.fails++;
       setTimeout(pushDiff, 3000);
     } finally {

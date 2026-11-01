@@ -140,7 +140,7 @@
         const el = m.getElement();
         if (!el) return;
         // shortest turn, so the tip never spins the long way round
-        hd += ((heading - hd + 540) % 360) - 180;
+        hd += (((heading - hd) % 360) + 540) % 360 - 180;
         const rot = el.querySelector('.bm-rot');
         if (rot) rot.style.transform = 'rotate(' + hd.toFixed(1) + 'deg)';
       },

@@ -8,7 +8,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  const maskPhones = (t) => String(t).replace(/\+?\d[\d\s-]{6,}\d/g, '••••');
+  const maskPhones = (t) => String(t).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\+?\d[\d\s-]{6,}\d/g, '••••');
 
   function loadDriverId() {
     let id = null;
@@ -34,7 +34,7 @@
   }
 
   function toast(msg) {
-    document.querySelectorAll('.toast').forEach((n) => n.remove());
+    document.querySelectorAll('.toast:not(.toast-undo)').forEach((n) => n.remove());
     const t = document.createElement('div');
     t.className = 'toast';
     t.textContent = msg;
@@ -88,6 +88,7 @@
   let map = null, routeLayer = null, pinLayer = null;
   let lastTripId = null, lastPinSig = '', lastReqSig = '', lastChatSig = '';
   let knownPickups = null;
+  const loadedAt = Date.now();
   // map focus: 'auto' keeps the bus and the nearest student in frame (only moves when it has to), 'manual' = the driver moved the map, 'all' = whole route
   let focusMode = 'auto', focusBtns = {}, lastTouchAt = 0;
   let routeObj = null, routePoly = null, dbus = null, pinMarkers = {}, lastTick = 0;
@@ -538,6 +539,8 @@
   /* new (accepted|waiting) requests ahead of the bus on the trip being driven, not seen by this page before */
   function checkNewRequests() {
     const active = MB.state.pickups.filter((k) => k.status === 'accepted' || k.status === 'waiting');
+    // wait for the first server pull, or every request already on the server would look new
+    if (knownPickups === null && !MB.online && Date.now() - loadedAt < 4000) return;
     if (knownPickups === null) { knownPickups = new Set(active.map((k) => k.id)); return; }
     const fresh = active.filter((k) => !knownPickups.has(k.id));
     active.forEach((k) => knownPickups.add(k.id));
@@ -734,6 +737,7 @@
       const k = (MB.state.pickups || []).find((x) => x.id === d.dataset.k);
       if (!k) return;
       focusMode = 'manual';
+      lastTouchAt = Date.now();   // otherwise auto-follow takes the camera back on the next refresh
       updateFocusBtn();
       map.flyTo([k.lat, k.lng], 17, { duration: 0.8 });
       try { $('map').scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (err) {}

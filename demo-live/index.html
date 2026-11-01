@@ -81,7 +81,10 @@
     const li = document.createElement('li');
     li.className = who;
     const label = { stu: 'الطالب', srv: 'السيرفر', drv: 'السواق', act: 'خطوة' }[who];
-    li.innerHTML = '<time>+' + ((performance.now() - t0) / 1000).toFixed(1) + ' ث</time><span><b>' + label + ':</b> ' + text + '</span>';
+    const tm = document.createElement('time'); tm.textContent = '+' + ((performance.now() - t0) / 1000).toFixed(1) + ' ث';
+    const sp = document.createElement('span'); const b = document.createElement('b'); b.textContent = label + ':';
+    sp.append(b, ' ', text);   // shown as text: chat messages from other users can land here
+    li.append(tm, sp);
     $('log').prepend(li);
   }
   const hint = (t) => { $('hint').textContent = t; };
@@ -162,7 +165,7 @@
   $('b0').onclick = prepare;
   $('b1').onclick = async () => {
     resetClock();
-    if (click(S(), '[data-act=book][data-trip="t1"]')) { log('act', 'الطالب اختار رحلة 07:00 وضغط «سجّل الآن»'); hint('بص عند الطالب: ظهر «✓ مسجّل». دوس 2.'); }
+    if (click(S(), '[data-act=book][data-trip="t1"]')) { log('act', 'الطالب اختار رحلة ' + S().MB.fmt12('07:00') + ' وضغط «سجّل الآن»'); hint('بص عند الطالب: ظهر «✓ مسجّل». دوس 2.'); }
     else { log('act', 'الطالب مسجّل بالفعل (أو دوس «0» الأول).'); }
   };
   $('b2').onclick = () => {

@@ -84,7 +84,7 @@
   function nextTripOf(t) {
     const day = dayKey(t.scheduledAt);
     return MB.state.trips
-      .filter((x) => x.id !== t.id && x.routeId === t.routeId && x.direction === t.direction && x.status === 'scheduled' && x.scheduledAt > t.scheduledAt && dayKey(x.scheduledAt) === day)
+      .filter((x) => x.id !== t.id && x.published !== false && x.routeId === t.routeId && x.direction === t.direction && x.status === 'scheduled' && x.scheduledAt > t.scheduledAt && dayKey(x.scheduledAt) === day)
       .sort((a, b) => a.scheduledAt - b.scheduledAt)[0] || null;
   }
 
@@ -170,6 +170,7 @@
     MB.update((s) => {
       if (editId) {
         const t = s.trips.find((x) => x.id === editId);
+        if (!t) return;
         Object.assign(t, { routeId: route.id, direction: data.direction === 'back' ? 'back' : 'go', time: data.time, scheduledAt: sched, driverId: drv.id, busId: bus.id, capacity: bus.capacity });
       } else {
         const t = { id: MB.newTripId(), routeId: route.id, direction: data.direction === 'back' ? 'back' : 'go', time: data.time, scheduledAt: sched, driverId: drv.id, busId: bus.id, capacity: bus.capacity, booked: 0, status: 'scheduled', startedAt: null, published: false };
@@ -331,7 +332,7 @@
         : '<span class="badge warn">ضعيفة الإشغال (' + t.booked + ' مسجّل · ' + p + '%)</span>';
       const btns = isCrowded
         ? '<button class="btn sm ok" data-act="demAddBus" data-id="' + t.id + '">+ زوّد حافلة</button>'
-        : '<button class="btn sm sec" data-act="demMerge" data-id="' + t.id + '"' + (next ? '' : ' disabled title="لا توجد رحلة تالية"') + '>دمج في التالية</button> ' +
+        : '<button class="btn sm sec" data-act="demMerge" data-id="' + t.id + '"' + (next && t.status === 'scheduled' ? '' : ' disabled title="' + (t.status === 'scheduled' ? 'لا توجد رحلة تالية' : 'الدمج للرحلات المجدولة فقط') + '"') + '>دمج في التالية</button> ' +
           '<button class="btn sm bad" data-act="demCancel" data-id="' + t.id + '">إلغاء</button>';
       return '<div class="row" style="justify-content:space-between;padding:8px 10px;background:var(--card);border:1px solid var(--line);border-radius:8px;margin-top:6px">' +
         '<div class="row" style="gap:8px"><b>' + esc(titleOf(t)) + '</b> ' + reason + '</div>' +
@@ -345,7 +346,7 @@
       let acts = '';
       if (weakRow) {
         const next = nextTripOf(t);
-        acts += '<button class="btn sm sec" data-act="demMerge" data-id="' + t.id + '"' + (next ? '' : ' disabled title="لا توجد رحلة تالية"') + '>دمج</button> ';
+        acts += '<button class="btn sm sec" data-act="demMerge" data-id="' + t.id + '"' + (next && t.status === 'scheduled' ? '' : ' disabled title="' + (t.status === 'scheduled' ? 'لا توجد رحلة تالية' : 'الدمج للرحلات المجدولة فقط') + '"') + '>دمج</button> ';
         acts += '<button class="btn sm bad" data-act="demCancel" data-id="' + t.id + '">إلغاء</button> ';
       }
       if (t.booked > t.capacity && canChange(t)) {
@@ -391,6 +392,7 @@
   let fleetRaf = 0;
 
   function renderMonitor() {
+    if (map) { try { map.remove(); } catch (e) {} }
     map = null;
     markers = {};
     heatLayer = null;
@@ -759,7 +761,7 @@
 
   function go() {
     const h = (location.hash || '').slice(1);
-    cur = VIEWS[h] ? h : 'monitor';
+    cur = Object.prototype.hasOwnProperty.call(VIEWS, h) ? h : 'monitor';
     document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === cur));
     renderKpis();
     renderView();
@@ -771,7 +773,10 @@
       updateMonitor();
       const active = document.activeElement;
       const inOps = active && $('#opsPanel') && $('#opsPanel').contains(active) && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName);
-      if (!inOps) {
+      // keep unpublished edits (removed / added buses, changed driver or time) across live updates
+      const liveOf = (d) => MB.state.trips.find((x) => x.id === d.src);
+      const dirty = !!draft && draft.some((d) => d.removed || d.isNew || (d.src && (!liveOf(d) || liveOf(d).time !== d.time || liveOf(d).driverId !== d.driverId || liveOf(d).busId !== d.busId)));
+      if (!inOps && !dirty) {
         draft = null;
         refreshOpsPanel();
       }

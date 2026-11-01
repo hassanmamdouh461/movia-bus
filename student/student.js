@@ -79,8 +79,9 @@
   function isBookingMissed(s, b) {
     if (!b || b.status !== 'confirmed') return true;
     const t = trip(b.tripId);
-    if (!t || t.status === 'cancelled' || t.status === 'arrived') return true;
+    if (!t || t.status === 'cancelled') return true;
     const pk = myPk(s, t.id);
+    if (t.status === 'arrived') return !pk || pk.status !== 'boarded';   // a trip I rode is not a missed one
     if (pk && (pk.status === 'passed' || pk.status === 'skipped')) return true;
     return false;
   }
@@ -101,7 +102,7 @@
       const mt = trip(draft.mapTrip);
       if (mt && mt.direction === dir && mt.status !== 'cancelled') return mt;
     }
-    const dirTrips = s.trips.filter((t) => t.direction === dir && t.status !== 'cancelled')
+    const dirTrips = s.trips.filter((t) => t.published !== false && t.direction === dir && t.status !== 'cancelled')
       .sort((a, b) => a.scheduledAt - b.scheduledAt);
     if (dir === 'go') {
       const actB = activeGoBooking(s);
@@ -127,7 +128,7 @@
   }
   function trackUrl(tid) {
     const base = (location.origin && location.origin !== 'null') ? location.origin + location.pathname : location.href.split('#')[0];
-    return base + '#track=' + tid;
+    return base + (MB.room ? '?room=' + MB.room : '') + '#track=' + tid;
   }
 
   // ETA model: before Ready -> bus's remaining trip time; after Ready -> time until the bus reaches my pickup
@@ -380,7 +381,7 @@
       if (t && t.direction === 'back') return t;
     }
     if (goT && goT.status !== 'arrived') return goT;
-    const backs = s.trips.filter((t) => t.direction === 'back' && (t.status === 'en_route' || t.status === 'at_start'));
+    const backs = s.trips.filter((t) => t.published !== false && t.direction === 'back' && (t.status === 'en_route' || t.status === 'at_start'));
     return (goT && backs.find((t) => t.routeId === goT.routeId)) || backs[0] || goT;
   }
   function chatMsgs(s, tid) { return s.chat.filter((c) => c.tripId === tid).sort((a, b) => a.ts - b.ts); }
@@ -414,7 +415,7 @@
 
   function nextTripFor(s, t) {
     const free = s.trips
-      .filter((x) => x.id !== t.id && (x.status === 'scheduled' || x.status === 'at_start') && x.direction === 'go' && !bookingFor(s, x.id))
+      .filter((x) => x.published !== false && x.id !== t.id && (x.status === 'scheduled' || x.status === 'at_start') && x.direction === 'go' && !bookingFor(s, x.id))
       .sort((a, b) => a.scheduledAt - b.scheduledAt);
     const same = free.filter((x) => x.routeId === t.routeId && x.direction === t.direction);
     return same[0] || free[0] || null;
@@ -575,11 +576,11 @@
     const d = draft.report;
     const txt = (d.text || '').trim();
     if (txt.length < 4) return toast('يرجى كتابة تفاصيل المشكلة باختصار');
+    d.text = '';
     MB.update((st) => st.reports.unshift({
       id: uid('p'), ts: now(), studentName: st.me.name, category: d.cat,
       text: txt.slice(0, 500), status: 'open', assignee: '', tripId: d.trip || null,
     }));
-    d.text = '';
     toast('تم إرسال البلاغ للإدارة ✓');
   }
 
@@ -587,6 +588,7 @@
   function checkApproach() {
     const s = MB.state;
     if (!s) return;
+    ensure(s);   // `me` is local-only and another tab's reset can rewrite it without these fields
     let hit = null;
     s.trips.forEach((t) => {
       if (hit || t.status !== 'en_route') return;
@@ -640,7 +642,7 @@
 
     if (dir === 'back') {
       const list = s.trips
-        .filter((x) => x.direction === 'back' && x.status !== 'cancelled' && x.status !== 'arrived')
+        .filter((x) => x.published !== false && x.direction === 'back' && x.status !== 'cancelled' && x.status !== 'arrived')
         .sort((a, b) => a.scheduledAt - b.scheduledAt);
       const chips = list.map((x) => {
         const isCur = activeTrip && activeTrip.id === x.id;
@@ -673,7 +675,7 @@
     }
 
     const goTrips = s.trips
-      .filter((x) => x.direction === 'go' && x.status !== 'cancelled')
+      .filter((x) => x.published !== false && x.direction === 'go' && x.status !== 'cancelled')
       .sort((a, b) => a.scheduledAt - b.scheduledAt);
 
     let headerHtml;
@@ -879,7 +881,7 @@
 
         '<section class="card">' +
           '<h3>سياسات ومواعيد الركوب المثبتة</h3>' +
-          '<p class="mute" style="margin:0 0 8px">آخر موعد لرحلات العودة اليومية: <b>' + esc(s.policies ? s.policies.lastReturn : '19:30') + '</b></p>' +
+          '<p class="mute" style="margin:0 0 8px">آخر موعد لرحلات العودة اليومية: <b>' + esc(MB.fmt12(s.policies ? s.policies.lastReturn : '19:30')) + '</b></p>' +
           '<ul style="margin:0;padding-right:18px;font-size:14px">' +
             rules.map((r) => '<li style="margin-bottom:4px">' + esc(r) + '</li>').join('') +
           '</ul>' +
@@ -1158,7 +1160,7 @@
 
   function parseRoute() {
     const h = location.hash.replace(/^#/, '');
-    if (h.indexOf('track=') === 0) return { view: 'track', id: decodeURIComponent(h.slice(6)) };
+    if (h.indexOf('track=') === 0) { let id = h.slice(6); try { id = decodeURIComponent(id); } catch (e) {} return { view: 'track', id }; }
     if (h === 'support') return { view: 'alerts', id: '' };
     return { view: VIEWS.indexOf(h) >= 0 ? h : 'home', id: '' };
   }
