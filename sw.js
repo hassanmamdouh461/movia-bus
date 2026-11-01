@@ -2,10 +2,10 @@
    Network first so the demo always shows the latest deploy; the cache is only a fallback
    for a flaky connection. The sync API and map tiles are never cached (they must be live). */
 
-const CACHE = 'lotus-bus-v2';
+const CACHE = 'lotus-bus-v3';
 const SHELL = [
   '/', '/student/', '/driver/', '/admin/',
-  '/shared/core.js', '/shared/mb.css', '/shared/lum-crest.svg', '/shared/lum-logo.svg',
+  '/shared/core.js', '/shared/map.js', '/shared/mb.css', '/shared/lum-crest.svg', '/shared/lum-logo.svg',
   '/student/student.js', '/student/student.css',
   '/driver/driver.js', '/driver/driver.css',
   '/admin/admin.js',

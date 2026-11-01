@@ -595,3 +595,109 @@ h1, h2, h3, strong {
 .leaflet-container {
   isolation: isolate;
 }
+
+/* ---- shared map pieces (see shared/map.js) ---- */
+.mb-bus,
+.mb-chev {
+  background: none;
+  border: 0;
+}
+
+.bm {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.bm-dot {
+  position: absolute;
+  left: -19px;
+  top: -19px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--brand);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(4, 41, 89, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* the tip turns with the direction of travel; the bus icon itself stays upright */
+.bm-rot {
+  position: absolute;
+  left: -29px;
+  top: -29px;
+  width: 58px;
+  height: 58px;
+  transition: transform 0.4s linear;
+  pointer-events: none;
+}
+
+.bm-tip {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  margin-left: -7px;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 11px solid var(--brand);
+  filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff);
+}
+
+.bm-lbl {
+  position: absolute;
+  top: 24px;
+  left: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--brand);
+  border: 1.5px solid var(--brand);
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.bm-lbl:empty {
+  display: none;
+}
+
+/* calmer basemap: less colour, so the route and the pins stand out; dark one at night */
+.mb-tiles {
+  filter: saturate(0.3) contrast(0.95) brightness(1.06);
+}
+
+.map-night .mb-tiles {
+  filter: invert(1) hue-rotate(180deg) saturate(0.45) brightness(0.82) contrast(0.92);
+}
+
+.map-night .leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.55);
+  color: #cbd5e1;
+}
+
+.map-night .leaflet-control-attribution a {
+  color: #93c5fd;
+}
+
+/* map buttons: follow the bus / my position / whole route */
+.map-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.map-tool {
+  background: #fff;
+  color: var(--brand);
+}
+
+.map-tool.on {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}

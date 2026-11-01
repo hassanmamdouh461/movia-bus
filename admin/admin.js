@@ -378,6 +378,7 @@
   let heatOn = false;
   let heatRange = 'live';
   let heatSig = '';
+  let fleetRaf = 0;
 
   function renderMonitor() {
     map = null;
@@ -413,11 +414,11 @@
       return;
     }
     map = L.map(el).setView([28.11, 30.80], 12);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+    MBMap.addTiles(map);
     const pts = [];
     (MB.routes || []).forEach((r) => {
       if (!r.polyline || !r.polyline.length) return;
-      L.polyline(r.polyline, { color: r.color, weight: 4, opacity: 0.75 }).addTo(map);
+      MBMap.route(map, r.polyline, r.color);
       const a = r.polyline[0], b = r.polyline[r.polyline.length - 1];
       pts.push(a, b);
       L.circleMarker(a, { radius: 6, color: r.color, weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('بداية: ' + esc(r.fromName || '')).addTo(map);
@@ -427,6 +428,17 @@
     heatLayer = L.layerGroup().addTo(map);
     drawHeat(true);
     setTimeout(() => map && map.invalidateSize(), 60);
+    // the buses glide: their position is redrawn every animation frame from the clock
+    cancelAnimationFrame(fleetRaf);
+    const glide = () => {
+      if (!map || !el.isConnected) return;
+      fleetRaf = requestAnimationFrame(glide);
+      Object.keys(markers).forEach((id) => {
+        const t = MB.trip(id), p = t && t.status === 'en_route' ? MB.position(t) : null;
+        if (p) markers[id].setLatLng([p.lat, p.lng]);
+      });
+    };
+    fleetRaf = requestAnimationFrame(glide);
   }
 
   function updateMonitor() {

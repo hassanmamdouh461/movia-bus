@@ -931,10 +931,11 @@
     const poly = MB.polyOf(t);
     const ends = endNames(t);
     const map = L.map(el, { scrollWheelZoom: false }).setView([28.11, 30.80], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+    MBMap.addTiles(map);
     el.classList.toggle('picking', draft.pickMode === tid);
-    const done = L.polyline([], { color: '#94a3b8', weight: 5, opacity: 0.9, interactive: false }).addTo(map);   // part the bus already drove
-    const line = L.polyline(poly, { color: route.color, weight: 5, opacity: 0.9 }).addTo(map);                    // part still ahead
+    const rt = MBMap.route(map, poly, route.color);
+    const done = rt.done;   // part the bus already drove
+    const line = rt.line;   // part still ahead
     // route ends only: start and finish markers
     L.marker(poly[0], {
       icon: L.divIcon({ className: '', html: '<div class="pin">من</div>', iconSize: [26, 26], iconAnchor: [13, 13] }),
@@ -954,7 +955,8 @@
     map.on('click', (e) => { if (draft.pickMode === tid) pickOnMap(tid, e.latlng.lat, e.latlng.lng); });
     const focusing = draft.focusPk && pk && (pk.status === 'waiting' || pk.status === 'accepted' || pk.status === 'boarding');
     if (!focusing) draft.focusPk = false;
-    map.fitBounds(line.getBounds(), { padding: [28, 28] });
+    // no animation: a pending animated fit would later undo the zoom the follow mode sets right below
+    map.fitBounds(line.getBounds(), { padding: [28, 28], animate: false });
     if (focusing) {
       if (draft.flyPk) {
         // animated zoom from the whole route down to my spot, and bring the map into view on phones
@@ -1096,20 +1098,6 @@
     if (mapCtl && mapCtl.tools.bus) mapCtl.tools.bus.classList.toggle('on', !!draft.follow);
   }
 
-  // point of a path at progress p (0..1)
-  function pointAt(poly, p) {
-    const f = Math.max(0, Math.min(1, p)) * (poly.length - 1);
-    const i = Math.min(poly.length - 2, Math.floor(f)), k = f - i;
-    return [poly[i][0] + (poly[i + 1][0] - poly[i][0]) * k, poly[i][1] + (poly[i + 1][1] - poly[i][1]) * k];
-  }
-  // direction of travel in degrees (0 = north), measured over a short stretch so tiny zig-zags don't make the arrow jitter
-  function headingAt(poly, p) {
-    const a = pointAt(poly, p - 0.012), b = pointAt(poly, p + 0.012);
-    const dy = (b[0] - a[0]) * 111000, dx = (b[1] - a[1]) * 98000;
-    if (Math.abs(dx) + Math.abs(dy) < 1) return null;
-    return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
-  }
-
   // text in the capsule under the bus
   function busLabel(t, pos) {
     if (pos.paused) return 'واقف للركوب';
@@ -1132,8 +1120,6 @@
     return end === null ? 'الحافلة' : 'الوصول بعد ' + mins(end);
   }
 
-  const BUS_ARROW = '<svg class="bus-arrow" viewBox="0 0 24 24" width="20" height="20"><path d="M12 2.5 20 21l-8-4.2L4 21z" fill="#fff"/></svg>';
-
   // runs every animation frame: the position is a pure function of the clock, so the bus glides instead of jumping
   function paintBus() {
     const c = mapCtl;
@@ -1142,36 +1128,14 @@
     if (!t) return;
     const pos = MB.position(t);
     if (!pos) {
-      if (c.bus) { c.bus.remove(); c.bus = null; c.lastLbl = ''; }
+      if (c.bus) { c.bus.remove(); c.bus = null; }
       if (c.lastTrail !== -1) { c.done.setLatLngs([]); c.line.setLatLngs(c.poly); c.lastTrail = -1; }
       return;
     }
     const ll = [pos.lat, pos.lng];
-    const hd = headingAt(c.poly, pos.progress);
-    if (!c.bus) {
-      c.bus = window.L.marker(ll, {
-        icon: window.L.divIcon({
-          className: 'mb-bus',
-          html: '<div class="bus-dot">' + BUS_ARROW + '</div><div class="bus-lbl"></div>',
-          iconSize: [0, 0],
-        }),
-        zIndexOffset: 1000,
-        interactive: false,
-      }).addTo(c.map);
-    } else {
-      c.bus.setLatLng(ll);
-    }
-    const el = c.bus.getElement();
-    if (el) {
-      if (hd !== null) {
-        // shortest turn, so the arrow never spins the long way round
-        c.hd += ((hd - c.hd + 540) % 360) - 180;
-        const ar = el.querySelector('.bus-arrow');
-        if (ar) ar.style.transform = 'rotate(' + c.hd.toFixed(1) + 'deg)';
-      }
-      const txt = busLabel(t, pos);
-      if (txt !== c.lastLbl) { c.lastLbl = txt; const l = el.querySelector('.bus-lbl'); if (l) l.textContent = txt; }
-    }
+    if (!c.bus) c.bus = MBMap.bus(c.map, ll);
+    c.bus.move(ll, MBMap.headingAt(c.poly, pos.progress));
+    c.bus.label(busLabel(t, pos));
     if (draft.follow && c.followReady) c.map.panTo(ll, { animate: false });
     // progress trail: grey behind the bus, route colour ahead (redrawn a few times per second only)
     const nowMs = performance.now();

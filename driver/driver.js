@@ -85,83 +85,104 @@
     return out.sort((a, b) => (b.k.status === 'boarding') - (a.k.status === 'boarding') || a.dist - b.dist);
   }
 
-  let map = null, routeLayer = null, pinLayer = null, busLayer = null;
+  let map = null, routeLayer = null, pinLayer = null, linkLayer = null;
   let lastTripId = null, lastPinSig = '', lastReqSig = '', lastChatSig = '';
   let knownPickups = null;
-  // map focus: 'auto' keeps the bus and the nearest student request in frame, 'manual' leaves the map to the driver
-  let focusMode = 'auto', lastFitAt = 0, lastFitKey = '', focusBtn = null;
+  // map focus: 'auto' keeps the bus and the nearest student in frame (only moves when it has to), 'manual' = the driver moved the map, 'all' = whole route
+  let focusMode = 'auto', lastFitKey = '', focusBtns = {};
+  let routeObj = null, routePoly = null, dbus = null, pinMarkers = {}, linkLine = null, linkLbl = null, lastTick = 0;
 
   function initMap() {
     if (typeof L === 'undefined') return;
     map = L.map('map', { zoomControl: true, scrollWheelZoom: false }).setView([28.11, 30.80], 12);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap',
-    }).addTo(map);
+    MBMap.addTiles(map, { night: true });
     routeLayer = L.layerGroup().addTo(map);
     pinLayer = L.layerGroup().addTo(map);
-    busLayer = L.layerGroup().addTo(map);
+    linkLayer = L.layerGroup().addTo(map);
     const takeOver = () => { if (focusMode === 'auto') { focusMode = 'manual'; updateFocusBtn(); } };
     map.on('dragstart', takeOver);
     map.getContainer().addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.leaflet-control-zoom')) takeOver(); });
+    // route end labels fade out when zoomed in close
+    map.on('zoomend', () => map.getContainer().classList.toggle('zoomed-in', map.getZoom() >= 15));
     const FocusCtl = L.Control.extend({
       options: { position: 'topleft' },
       onAdd() {
-        const b = L.DomUtil.create('button', 'btn sm map-focus-btn');
-        b.type = 'button';
-        L.DomEvent.disableClickPropagation(b);
-        L.DomEvent.on(b, 'click', () => {
-          focusMode = focusMode === 'auto' ? 'manual' : 'auto';
-          lastFitKey = ''; lastFitAt = 0;
-          if (focusMode === 'manual' && lastTrip) map.fitBounds(L.latLngBounds(MB.polyOf(lastTrip)), { padding: [28, 28] });
+        const box = L.DomUtil.create('div', 'map-tools');
+        const mk = (key, text, fn) => {
+          const b = L.DomUtil.create('button', 'btn sm map-focus-btn map-tool', box);
+          b.type = 'button';
+          b.textContent = text;
+          L.DomEvent.disableClickPropagation(b);
+          L.DomEvent.on(b, 'click', fn);
+          focusBtns[key] = b;
+        };
+        mk('auto', 'تتبّع تلقائي', () => {
+          focusMode = 'auto'; lastFitKey = '';
           updateFocusBtn();
-          if (lastTrip) autoFocus(lastTrip);
+          if (lastTrip) autoFocus(lastTrip, true);
         });
-        focusBtn = b;
-        return b;
+        mk('all', 'المسار كله', () => {
+          focusMode = 'all';
+          updateFocusBtn();
+          if (lastTrip) map.fitBounds(L.latLngBounds(MB.polyOf(lastTrip)), { padding: [28, 28] });
+        });
+        return box;
       },
     });
     new FocusCtl().addTo(map);
     updateFocusBtn();
     setTimeout(() => map.invalidateSize(), 50);
     window.addEventListener('resize', () => map && map.invalidateSize());
+    requestAnimationFrame(driverFrame);
   }
 
   let lastTrip = null;
   function updateFocusBtn() {
-    if (focusBtn) focusBtn.textContent = focusMode === 'auto' ? 'عرض المسار كله' : 'تتبّع تلقائي';
+    if (focusBtns.auto) focusBtns.auto.classList.toggle('on', focusMode === 'auto');
+    if (focusBtns.all) focusBtns.all.classList.toggle('on', focusMode === 'all');
   }
 
-  /* Auto focus: while the trip is running, keep the bus and the nearest student request in frame
-     (zoomed in close); with no requests ahead just follow the bus; while boarding stay on the bus. */
-  function autoFocus(trip) {
+  /* Auto focus: keeps the bus and the nearest student in frame, but only moves the map when it has to
+     (a new target, the bus leaves the middle of the view, or the right zoom changed by a whole level) -
+     in between the bus just glides across the map. With nobody ahead it follows the bus; while boarding it stays close. */
+  function autoFocus(trip, force) {
     if (!map || focusMode !== 'auto' || trip.status !== 'en_route') return;
     const pos = MB.position(trip);
     if (!pos) return;
     const reqs = aheadRequests(trip);
-    const target = reqs[0];
-    const now = Date.now();
-    const bus = [pos.lat, pos.lng];
-    if (target && target.k.status !== 'boarding') {
+    const boarding = reqs.find((r) => r.k.status === 'boarding');
+    const target = reqs.find((r) => r.k.status !== 'boarding');
+    const bus = L.latLng(pos.lat, pos.lng);
+    const inner = map.getBounds().pad(-0.3);
+    if (boarding) {
+      if (force || lastFitKey !== 'brd' || !inner.contains(bus)) {
+        lastFitKey = 'brd';
+        map.setView(bus, 17, { animate: true, duration: 0.8 });
+      }
+    } else if (target) {
+      const tl = L.latLng(target.k.lat, target.k.lng);
+      const bounds = L.latLngBounds([bus, tl]);
       const key = 'req|' + target.k.id;
-      // refit when the nearest request changes, otherwise every 2s as the bus closes in
-      if (key === lastFitKey && now - lastFitAt < 2000) return;
-      lastFitKey = key; lastFitAt = now;
-      map.fitBounds(L.latLngBounds([bus, [target.k.lat, target.k.lng]]), { padding: [60, 60], maxZoom: 17, animate: true, duration: 0.8 });
-    } else {
-      const key = target ? 'brd' : 'follow';
-      if (key === lastFitKey && now - lastFitAt < 1500) return;
-      lastFitKey = key; lastFitAt = now;
-      map.setView(bus, target ? 17 : 15, { animate: true, duration: 0.8 });
+      const zWant = Math.min(17, map.getBoundsZoom(bounds, false, L.point(60, 60)));
+      if (force || key !== lastFitKey || Math.abs(map.getZoom() - zWant) >= 1 || !inner.contains(bus) || !inner.contains(tl)) {
+        lastFitKey = key;
+        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 17, animate: true, duration: 0.8 });
+      }
+    } else if (force || lastFitKey !== 'follow' || !inner.contains(bus) || Math.abs(map.getZoom() - 15) >= 1) {
+      lastFitKey = 'follow';
+      map.setView(bus, 15, { animate: true, duration: 0.8 });
     }
   }
 
   function drawRoute(trip) {
     if (!map) return;
     routeLayer.clearLayers();
+    if (routeObj) routeObj.destroy();
+    if (dbus) { dbus.remove(); dbus = null; }
+    pinMarkers = {}; linkLine = null; linkLbl = null; linkLayer.clearLayers();
     const route = MB.R[trip.routeId];
-    const poly = MB.polyOf(trip);
-    L.polyline(poly, { color: route.color, weight: 6, opacity: 0.9 }).addTo(routeLayer);
+    routePoly = MB.polyOf(trip);
+    routeObj = MBMap.route(map, routePoly, route.color);
     const term = (latlng, name, cls) => L.marker(latlng, {
       icon: L.divIcon({
         className: 'mb-icon',
@@ -169,27 +190,31 @@
         iconSize: [0, 0],
         iconAnchor: [0, 0],
       }),
+      interactive: false,
     }).addTo(routeLayer);
-    term(poly[0], trip.direction === 'go' ? route.fromName : route.toName, 'start');
-    term(poly[poly.length - 1], trip.direction === 'go' ? route.toName : route.fromName, 'end');
-    map.fitBounds(L.latLngBounds(poly), { padding: [28, 28] });
-    lastFitKey = ''; lastFitAt = 0;
+    term(routePoly[0], trip.direction === 'go' ? route.fromName : route.toName, 'start');
+    term(routePoly[routePoly.length - 1], trip.direction === 'go' ? route.toName : route.fromName, 'end');
+    map.fitBounds(L.latLngBounds(routePoly), { padding: [28, 28] });
+    lastFitKey = '';
   }
 
+  /* students ahead as numbered dots (1 = nearest), same numbers as on the strip */
   function renderPins(trip) {
     if (!map) return;
-    const act = MB.pickupsOf(trip.id, true);
-    const sig = trip.id + '|' + act.map((k) => k.id + k.status).join(',');
+    const reqs = trip.status === 'en_route' && MB.position(trip) ? aheadRequests(trip) : [];
+    const sig = trip.id + '|' + reqs.map((r) => r.k.id + r.k.status).join(',');
     if (sig === lastPinSig) return;
     lastPinSig = sig;
     pinLayer.clearLayers();
-    act.forEach((k) => {
-      const cls = k.status === 'accepted' ? 'acc' : k.status === 'boarding' ? 'brd' : 'wait';
-      const tip = k.status === 'accepted' ? 'هتقف له' : k.status === 'boarding' ? 'واقف — بيركبوا' : 'طلب ركوب منتظر';
-      L.marker([k.lat, k.lng], {
+    pinMarkers = {};
+    reqs.forEach((r, i) => {
+      const k = r.k;
+      const cls = k.status === 'boarding' ? 'brd' : 'acc';
+      const tip = k.status === 'boarding' ? 'واقف — بيركبوا' : 'هتقف له';
+      pinMarkers[k.id] = L.marker([k.lat, k.lng], {
         icon: L.divIcon({
           className: 'mb-icon',
-          html: '<div class="pin req ' + cls + '">طالب</div>',
+          html: '<div class="pin req ' + cls + '">' + (i + 1) + '</div>',
           iconSize: [0, 0],
           iconAnchor: [0, 0],
         }),
@@ -197,22 +222,65 @@
     });
   }
 
-  function renderBus(trip) {
-    if (!map) return;
+  /* ---- the bus: glides (position is drawn every animation frame from the clock), with a trail and a line to the nearest student ---- */
+  function busLabelFor(trip) {
+    const reqs = aheadRequests(trip);
+    if (reqs.some((r) => r.k.status === 'boarding')) return 'واقف للركوب';
+    const n = reqs[0];
+    return n ? 'طالب بعد ' + (n.eta < 1 ? 'أقل من دقيقة' : n.eta + ' د') : '';
+  }
+
+  function paintBus(trip) {
+    if (!map || !routeObj) return;
     const pos = trip.status === 'en_route' ? MB.position(trip) : null;
-    if (!pos) { busLayer.clearLayers(); return; }
-    if (!busLayer.getLayers().length) {
-      L.marker([pos.lat, pos.lng], {
-        icon: L.divIcon({
-          className: 'mb-icon',
-          html: '<div class="pin bus">الحافلة</div>',
-          iconSize: [0, 0],
-          iconAnchor: [0, 0],
-        }),
-      }).addTo(busLayer);
-    } else {
-      busLayer.eachLayer((m) => m.setLatLng([pos.lat, pos.lng]));
+    if (!pos) {
+      if (dbus) { dbus.remove(); dbus = null; }
+      routeObj.done.setLatLngs([]);
+      routeObj.line.setLatLngs(routePoly);
+      if (linkLine) { linkLayer.clearLayers(); linkLine = linkLbl = null; }
+      return;
     }
+    const ll = [pos.lat, pos.lng];
+    if (!dbus) dbus = MBMap.bus(map, ll);
+    dbus.move(ll, MBMap.headingAt(routePoly, pos.progress));
+    const now = performance.now();
+    if (now - lastTick < 250) return;
+    lastTick = now;
+    // trail: grey behind the bus, route colour ahead
+    const i = Math.min(routePoly.length - 2, Math.floor(pos.progress * (routePoly.length - 1)));
+    routeObj.done.setLatLngs(routePoly.slice(0, i + 1).concat([ll]));
+    routeObj.line.setLatLngs([ll].concat(routePoly.slice(i + 1)));
+    dbus.label(busLabelFor(trip));
+    // dotted line along the road from the bus to the nearest student, with the distance; a ring on a student the bus is about to reach
+    const reqs = aheadRequests(trip);
+    const nearest = reqs.find((r) => r.k.status !== 'boarding');
+    reqs.forEach((r) => {
+      const m = pinMarkers[r.k.id], el = m && m.getElement(), pin = el && el.querySelector('.pin');
+      if (pin) pin.classList.toggle('alert', r.k.status !== 'boarding' && r.dist <= 100);
+    });
+    if (!nearest) {
+      if (linkLine) { linkLayer.clearLayers(); linkLine = linkLbl = null; }
+      return;
+    }
+    const pts = MBMap.sliceBetween(routePoly, pos.progress, nearest.k.progress);
+    pts[0] = ll;
+    const mid = pts[Math.floor(pts.length / 2)];
+    const icon = L.divIcon({ className: 'mb-icon', html: '<div class="link-lbl">' + esc(fmtDist(nearest.dist)) + '</div>', iconSize: [0, 0] });
+    if (!linkLine) {
+      linkLine = L.polyline(pts, { color: '#fff', weight: 4, dashArray: '1 10', lineCap: 'round', opacity: 1, interactive: false }).addTo(linkLayer);
+      linkLbl = L.marker(mid, { icon, interactive: false, zIndexOffset: 700 }).addTo(linkLayer);
+    } else {
+      linkLine.setLatLngs(pts);
+      linkLbl.setLatLng(mid);
+      linkLbl.setIcon(icon);
+    }
+  }
+
+  function driverFrame() {
+    requestAnimationFrame(driverFrame);
+    if (!map || !lastTrip) return;
+    const t = MB.trip(lastTrip.id);
+    if (t) paintBus(t);
   }
 
   function renderPill(trip) {
@@ -315,7 +383,7 @@
     if (sig !== stripSig) {
       stripSig = sig;
       const dots = reqs.map((r, i) => '<button class="ds-dot ' + (r.k.status === 'boarding' ? 'brd' : 'acc') + (i === 0 ? ' near' : '') +
-        '" type="button" data-k="' + esc(r.k.id) + '" style="right:' + X(r.k.progress).toFixed(1) + '%" aria-label="طالب على بعد ' + fmtDist(r.dist) + '"></button>').join('');
+        '" type="button" data-k="' + esc(r.k.id) + '" style="right:' + X(r.k.progress).toFixed(1) + '%" aria-label="طالب على بعد ' + fmtDist(r.dist) + '">' + (i + 1) + '</button>').join('');
       box.innerHTML = '<div class="ds-track"><i class="ds-fill" style="width:' + bx + '"></i>' + dots +
         '<span class="ds-bus" style="right:' + bx + '">🚌</span></div>' +
         '<div class="ds-ends"><span>' + esc(from) + '</span><span class="ds-count">' + (reqs.length ? reqs.length + ' طالب قدامك' : '') + '</span><span>' + esc(to) + '</span></div>';
@@ -611,8 +679,8 @@
     }
     renderStatus(trip);
     renderPill(trip);
-    renderBus(trip);
     lastTrip = trip;
+    paintBus(trip);
     autoFocus(trip);
     renderNext(trip);
     renderStrip(trip);

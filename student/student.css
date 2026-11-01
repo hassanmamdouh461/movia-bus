@@ -721,51 +721,6 @@ body.track .subnav {
   gap: 8px;
 }
 
-/* Leaflet Bus Marker: direction arrow + ETA capsule (the position glides, see paintBus) */
-.mb-bus {
-  background: none;
-  border: 0;
-}
-
-.bus-dot {
-  position: absolute;
-  left: -17px;
-  top: -17px;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--brand);
-  border: 3px solid #fff;
-  box-shadow: 0 2px 8px rgba(4, 41, 89, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.bus-arrow {
-  transition: transform 0.35s linear;
-}
-
-.bus-lbl {
-  position: absolute;
-  top: 22px;
-  left: 0;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: #fff;
-  color: var(--brand);
-  border: 1.5px solid var(--brand);
-  font-size: 12px;
-  font-weight: 800;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-}
-
-.bus-lbl:empty {
-  display: none;
-}
-
 /* My position: blue dot with a soft pulse, and the label on the line to the nearest route point */
 .me-dot {
   position: relative;
@@ -809,24 +764,6 @@ body.track .subnav {
 .me-lbl.ok {
   border-color: #15803d;
   color: #15803d;
-}
-
-/* Map buttons (top right): follow the bus / my position */
-.map-tools {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.map-tool {
-  background: #fff;
-  color: var(--brand);
-}
-
-.map-tool.on {
-  background: var(--brand);
-  color: #fff;
-  border-color: var(--brand);
 }
 
 /* Pickup point (Ready) on the map */
