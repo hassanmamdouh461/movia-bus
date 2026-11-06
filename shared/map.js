@@ -4,19 +4,28 @@
 (function () {
   'use strict';
 
-  /* Self-hosted pre-rendered tiles for Minya & New Minya (z10..z16, 863 tiles, 5.5 MB total),
-     served directly from our own domain (/shared/tiles/{z}/{x}/{y}.png) with zero external dependency. */
-  const TILES = '/shared/tiles/{z}/{x}/{y}.png';
+  /* Self-hosted pre-rendered tiles for Minya & New Minya (z10..z16, 1,065 tiles),
+     served directly from our own domain (/shared/tiles/{z}/{x}/{y}.png). */
+  const TILES = '/shared/tiles/{z}/{x}/{y}.png?v=2';
+  const FALLBACK_SUBS = ['a', 'b', 'c'];
 
   function addTiles(map) {
     if (map.attributionControl) map.attributionControl.remove();
-    window.L.tileLayer(TILES, {
+    const layer = window.L.tileLayer(TILES, {
       minZoom: 10,
       maxNativeZoom: 16,
       maxZoom: 19,
       attribution: '',
       className: 'mb-tiles',
-    }).addTo(map);
+    });
+    layer.on('tileerror', function (e) {
+      if (!e || !e.tile || e.tile.dataset.fallbackTried) return;
+      e.tile.dataset.fallbackTried = '1';
+      const c = e.coords;
+      const s = FALLBACK_SUBS[Math.abs(c.x + c.y) % FALLBACK_SUBS.length];
+      e.tile.src = 'https://' + s + '.tile.openstreetmap.fr/hot/' + c.z + '/' + c.x + '/' + c.y + '.png';
+    });
+    layer.addTo(map);
   }
 
   /* ---- geometry ---- */
