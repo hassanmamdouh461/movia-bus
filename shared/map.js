@@ -31,11 +31,12 @@
   }
 
   function addTiles(map) {
+    if (map.attributionControl) map.attributionControl.remove();
     const P = window.protomapsL;
     if (!P) return;
     const f = lumFlavor();
     P.leafletLayer({
-      url: PMTILES, maxDataZoom: 15, maxZoom: 19, attribution: ATTR,
+      url: PMTILES, maxDataZoom: 15, maxZoom: 19, attribution: '',
       paintRules: P.paintRules(f), labelRules: P.labelRules(f, 'ar'), backgroundColor: f.background,
     }).addTo(map);
   }

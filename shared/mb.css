@@ -596,6 +596,10 @@ h1, h2, h3, strong {
   isolation: isolate;
 }
 
+.leaflet-control-attribution {
+  display: none !important;
+}
+
 /* ---- shared map pieces (see shared/map.js) ---- */
 .mb-bus,
 .mb-chev {
