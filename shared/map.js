@@ -4,12 +4,40 @@
 (function () {
   'use strict';
 
-  const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-  const ATTR = '&copy; OpenStreetMap';
+  /* Self-hosted basemap: one PMTiles file for Minya / New Minya (vector, OSM data via Protomaps),
+     served from our own domain - no external map provider. Rebuild with:
+       pmtiles extract https://build.protomaps.com/<YYYYMMDD>.pmtiles shared/minya.pmtiles --bbox=30.60,27.90,31.00,28.30 --maxzoom=15 */
+  const PMTILES = '/shared/minya.pmtiles';
+  const ATTR = '&copy; OpenStreetMap · Protomaps';
 
-  /* OpenStreetMap tiles, calmed down with a CSS filter (see .mb-tiles in mb.css) so the route and the pins stand out */
+  /* calm palette in the Lotus University colours, so the route and the pins stand out */
+  function lumFlavor() {
+    const P = window.protomapsL;
+    return Object.assign({}, P.namedFlavor('light'), {
+      background: '#eef1f6', earth: '#f4f6fa',
+      park_a: '#e4efe6', park_b: '#d3e8d8', wood_a: '#e4efe6', wood_b: '#d3e8d8',
+      scrub_a: '#e8efe8', scrub_b: '#dbe9dd', sand: '#f1efe8', school: '#eaeef6', hospital: '#f3e9ea',
+      industrial: '#e8ecf2', pedestrian: '#eef0f4',
+      water: '#bcd9f2', buildings: '#e1e6ee',
+      minor_a: '#ffffff', minor_b: '#ffffff', minor_service: '#fbfcfd', other: '#f7f8fa',
+      minor_casing: '#dde3ec', minor_service_casing: '#e4e8ef', link_casing: '#d3dae5',
+      major: '#ffffff', major_casing_early: '#cfd7e3', major_casing_late: '#cfd7e3',
+      highway: '#fdf3df', highway_casing_early: '#e9d7b4', highway_casing_late: '#e9d7b4',
+      railway: '#b6bfcc', boundaries: '#c3cad6',
+      roads_label_minor: '#7b8597', roads_label_major: '#5b6578',
+      city_label: '#042959', city_label_halo: '#ffffff', subplace_label: '#64748b', subplace_label_halo: '#ffffff',
+      landcover: { grassland: '#e6f0e4', barren: '#f5f2ea', urban_area: '#eceff4', farmland: '#e3efdc', glacier: '#ffffff', scrub: '#ecf1e2', forest: '#dcebdd' },
+    });
+  }
+
   function addTiles(map) {
-    window.L.tileLayer(TILES, { maxZoom: 19, attribution: ATTR, className: 'mb-tiles' }).addTo(map);
+    const P = window.protomapsL;
+    if (!P) return;
+    const f = lumFlavor();
+    P.leafletLayer({
+      url: PMTILES, maxDataZoom: 15, maxZoom: 19, attribution: ATTR,
+      paintRules: P.paintRules(f), labelRules: P.labelRules(f, 'ar'), backgroundColor: f.background,
+    }).addTo(map);
   }
 
   /* ---- geometry ---- */

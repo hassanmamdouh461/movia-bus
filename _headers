@@ -13,3 +13,6 @@
   Cache-Control: no-cache
 /sw.js
   Cache-Control: no-cache
+/shared/*.pmtiles
+  Cache-Control: public, max-age=86400
+  Accept-Ranges: bytes
